@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     EXCHANGE_API_KEY: str | None = None
     EXCHANGE_API_SECRET: str | None = None
 
-    # Specific Exchange API Keys (examples, add more as needed)
     # These allow fetching from environment variables like BITGET_API_KEY etc.
     BITGET_API_KEY: str | None = None
     BITGET_API_SECRET: str | None = None
