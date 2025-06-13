@@ -75,6 +75,17 @@ The following are the main API endpoints currently available:
         *   `api_secret` (str, optional): Exchange API secret. If not provided, the application will try to use a secret from environment variables.
     *   Example: `/api/v1/exchange/balance?exchange_id=mexc&api_key=your_key&api_secret=your_secret`
 
+*   **`GET /market/market-overview/`**
+    *   Description: Provides a real-time market overview for a predefined set of cryptocurrency symbols.
+    *   Response: A JSON list, where each item contains:
+        *   `symbol`: The cryptocurrency symbol (e.g., "BTC/USDT").
+        *   `current_price`: The latest trading price.
+        *   `ema_20`: The 20-period Exponential Moving Average (EMA) on the H1 timeframe. Can be `null` if data is insufficient.
+        *   `sma_50`: The 50-period Simple Moving Average (SMA) on the H1 timeframe. Can be `null` if data is insufficient.
+        *   `support_levels`: A list of identified support levels (up to 5).
+        *   `resistance_levels`: A list of identified resistance levels (up to 5).
+    *   Details: The endpoint fetches data from Binance and uses H1 timeframe for indicator calculations and S/R levels. Symbols currently tracked: BTC/USDT, ETH/USDT, DOGE/USDT, SUI/USDT, POPCAT/USDT, HYPE/USDT.
+
 ## 🧪 How to Run Tests
 
 1.  Ensure you have installed development dependencies (pytest, pytest-asyncio, httpx). If not, you might need to add them to `requirements.txt` or a `requirements-dev.txt` and install them.
