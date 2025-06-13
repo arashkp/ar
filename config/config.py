@@ -9,14 +9,16 @@ class Settings(BaseSettings):
     EXCHANGE_API_KEY: str | None = None
     EXCHANGE_API_SECRET: str | None = None
 
-    # Specific Exchange API Keys (examples, add more as needed)
-    # These allow fetching from environment variables like BINANCE_API_KEY, COINBASEPRO_API_KEY etc.
-    BINANCE_API_KEY: str | None = None
-    BINANCE_API_SECRET: str | None = None
+    # These allow fetching from environment variables like BITGET_API_KEY etc.
+    BITGET_API_KEY: str | None = None
+    BITGET_API_SECRET: str | None = None
+    BITGET_PASSWORD: str | None = None # Passphrase, if required by Bitget
 
-    COINBASEPRO_API_KEY: str | None = None
-    COINBASEPRO_API_SECRET: str | None = None
-    COINBASEPRO_PASSWORD: str | None = None # Some exchanges require a passphrase
+    MEXC_API_KEY: str | None = None
+    MEXC_API_SECRET: str | None = None
+
+    BITUNIX_API_KEY: str | None = None
+    BITUNIX_API_SECRET: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 
