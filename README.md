@@ -84,7 +84,7 @@ The following are the main API endpoints currently available:
         *   `sma_50`: The 50-period Simple Moving Average (SMA) on the H1 timeframe. Can be `null` if data is insufficient.
         *   `support_levels`: A list of identified support levels (up to 5).
         *   `resistance_levels`: A list of identified resistance levels (up to 5).
-    *   Details: The endpoint fetches data from Binance and uses H1 timeframe for indicator calculations and S/R levels. Symbols currently tracked: BTC/USDT, ETH/USDT, DOGE/USDT, SUI/USDT, POPCAT/USDT, HYPE/USDT.
+    *   Details: The endpoint fetches data using the H1 timeframe for indicator calculations and S/R levels. It uses Binance for BTC/USDT, ETH/USDT, DOGE/USDT, and SUI/USDT, and Bitget for POPCAT/USDT and HYPE/USDT. Symbols currently tracked are these six pairs.
 
 ## 🧪 How to Run Tests
 
