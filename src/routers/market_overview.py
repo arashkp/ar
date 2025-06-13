@@ -13,35 +13,52 @@ class MarketOverviewItem(BaseModel):
     support_levels: List[float]
     resistance_levels: List[float]
 
-router = APIRouter()
-
-SYMBOLS = [
-    "BTC/USDT", "ETH/USDT", "DOGE/USDT", "SUI/USDT",
-    "POPCAT/USDT", "HYPE/USDT"
+SYMBOL_CONFIG = [
+    {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin"},
+    {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum"},
+    {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin"},
+    {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui"},
+    {"symbol": "POPCAT/USDT", "exchange_id": "bitget", "name": "Popcat"},
+    {"symbol": "HYPE/USDT", "exchange_id": "bitget", "name": "HypeCoin"},
 ]
+
+router = APIRouter()
 
 @router.get("/market-overview/", response_model=List[MarketOverviewItem])
 async def get_market_overview():
     results = []
-
-    # Initialize exchange clients
-    # It's good practice to use the full class name for clarity if not aliasing ccxt
-    binance_exchange = ccxt.binance({
-        'enableRateLimit': True,
-    })
-    bitget_exchange = ccxt.bitget({
-        'enableRateLimit': True,
-    })
+    active_exchanges = {} # Dictionary to store active exchange instances
 
     try:
-        for symbol in SYMBOLS:
-            exchange = None # Initialize exchange to None for clarity
+        for config_item in SYMBOL_CONFIG:
+            symbol = config_item["symbol"]
+            exchange_id = config_item["exchange_id"]
+            exchange = None
+
             try:
-                # Select the appropriate exchange instance
-                if symbol in ["POPCAT/USDT", "HYPE/USDT"]:
-                    exchange = bitget_exchange
+                # Get or create the exchange instance
+                if exchange_id in active_exchanges:
+                    exchange = active_exchanges[exchange_id]
                 else:
-                    exchange = binance_exchange
+                    try:
+                        exchange_class = getattr(ccxt, exchange_id)
+                        exchange = exchange_class({'enableRateLimit': True})
+                        active_exchanges[exchange_id] = exchange
+                        print(f"Initialized {exchange_id} for {symbol}")
+                    except AttributeError:
+                        print(f"Error: Exchange ID '{exchange_id}' for symbol {symbol} is not a valid ccxt exchange. Skipping.")
+                        results.append(MarketOverviewItem(
+                            symbol=symbol, current_price=0.0, ema_20=None, sma_50=None,
+                            support_levels=[], resistance_levels=[]
+                        ))
+                        continue
+                    except Exception as e:
+                        print(f"Error initializing exchange {exchange_id} for symbol {symbol}: {e}. Skipping.")
+                        results.append(MarketOverviewItem(
+                            symbol=symbol, current_price=0.0, ema_20=None, sma_50=None,
+                            support_levels=[], resistance_levels=[]
+                        ))
+                        continue
 
                 # Fetch Ticker for current price
                 ticker = await exchange.fetch_ticker(symbol)
@@ -58,7 +75,7 @@ async def get_market_overview():
 
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-                if len(df) < 50:
+                if len(df) < 50: # Minimum needed for SMA50
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_20=None, sma_50=None,
                         support_levels=sorted(df['low'].nsmallest(5).tolist()),
@@ -66,6 +83,7 @@ async def get_market_overview():
                     ))
                     continue
 
+                # Calculate EMA(20) and SMA(50)
                 df['ema_20'] = talib.EMA(df['close'], timeperiod=20)
                 df['sma_50'] = talib.SMA(df['close'], timeperiod=50)
 
@@ -83,22 +101,24 @@ async def get_market_overview():
                 ))
 
             except ccxt.NetworkError as e:
-                print(f"Network error for {symbol} on {exchange.id if exchange else 'N/A'}: {e}")
+                print(f"Network error for {symbol} on {exchange_id}: {e}")
                 results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
             except ccxt.ExchangeError as e:
-                print(f"Exchange error for {symbol} on {exchange.id if exchange else 'N/A'}: {e}")
+                print(f"Exchange error for {symbol} on {exchange_id}: {e}")
                 results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
             except Exception as e:
-                print(f"An unexpected error occurred for {symbol}: {e}")
+                print(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}")
                 results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
 
     finally:
-        # Always ensure both exchange clients are closed
-        if binance_exchange:
-            await binance_exchange.close()
-        if bitget_exchange:
-            await bitget_exchange.close()
+        for ex_id, ex_instance in active_exchanges.items():
+            if ex_instance:
+                try:
+                    await ex_instance.close()
+                    print(f"Closed {ex_id} exchange.")
+                except Exception as e:
+                    print(f"Error closing {ex_id} exchange: {e}")
 
-    if not results: # This condition might be hard to hit if SYMBOLS is not empty, as errors append items.
-         raise HTTPException(status_code=500, detail="Could not fetch any market data.")
+    if not results and SYMBOL_CONFIG: # Only raise if SYMBOL_CONFIG was not empty and still no results
+         raise HTTPException(status_code=500, detail="Could not fetch any market data for the configured symbols.")
     return results

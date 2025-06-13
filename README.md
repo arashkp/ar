@@ -84,7 +84,8 @@ The following are the main API endpoints currently available:
         *   `sma_50`: The 50-period Simple Moving Average (SMA) on the H1 timeframe. Can be `null` if data is insufficient.
         *   `support_levels`: A list of identified support levels (up to 5).
         *   `resistance_levels`: A list of identified resistance levels (up to 5).
-    *   Details: The endpoint fetches data using the H1 timeframe for indicator calculations and S/R levels. It uses Binance for BTC/USDT, ETH/USDT, DOGE/USDT, and SUI/USDT, and Bitget for POPCAT/USDT and HYPE/USDT. Symbols currently tracked are these six pairs.
+    *   Details: The endpoint fetches data using the H1 timeframe for indicator calculations and S/R levels. It uses Binance for BTC/USDT, ETH/USDT, DOGE/USDT, and SUI/USDT, and Bitget for POPCAT/USDT and HYPE/USDT.
+    *   **Configuration:** The list of cryptocurrency symbols and the exchanges they are fetched from is configured via the `SYMBOL_CONFIG` list at the top of the `src/routers/market_overview.py` file. This allows for easy modification, addition, or removal of symbols and their target exchanges.
 
 ## 🧪 How to Run Tests
 
