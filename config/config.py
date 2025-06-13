@@ -28,3 +28,5 @@ def get_settings():
 
 # For direct access if needed, though Depends(get_settings) is preferred in FastAPI
 settings = get_settings()
+
+DATABASE_URL = settings.DATABASE_URL

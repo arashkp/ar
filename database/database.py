@@ -30,3 +30,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+if __name__ == "__main__":
+    # This allows creating tables by running: python -m database.database
+    # Ensure your DATABASE_URL in .env (or config/config.py) is correctly set up.
+    print("Initializing database...")
+    init_db()
+    print("Database initialization process completed.")
