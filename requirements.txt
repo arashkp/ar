@@ -7,3 +7,5 @@ ccxt
 pydantic-settings
 pytest
 pytest-asyncio
+pandas
+talib-python
