@@ -119,3 +119,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Test databases
+test_db.db
+*.sqlite3 # General rule for sqlite databases if more are used for testing
+# test.db # If you use other specific names
