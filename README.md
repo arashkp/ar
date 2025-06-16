@@ -38,13 +38,17 @@ including integration with cryptocurrency exchanges for market data and account 
     cp .env_example .env
     ```
     Edit the `.env` file with your specific configurations:
-    *   `DATABASE_URL`: Your PostgreSQL database connection string.
-    *   `EXCHANGE_API_KEY`, `EXCHANGE_API_SECRET`: Generic API credentials if you plan to use one primary exchange configured this way.
-    *   Specific exchange keys for supported exchanges if you intend to call them by `exchange_id` (e.g., `BITGET_API_KEY`, `MEXC_API_KEY`, `BITUNIX_API_KEY`). The application will use these if no explicit keys are passed in API requests to the balance endpoint or if an exchange requires them for OHLCV.
+    *   `DATABASE_URL`: Your database connection string (e.g., `sqlite:///./ar_trade.db` for SQLite, or a PostgreSQL URL).
+    *   Exchange API Keys: The application uses `ccxt` to interact with exchanges, which requires API credentials for many operations, especially trading. These should be set in your `.env` file. The naming convention is:
+        *   `EXCHANGENAME_API_KEY` (e.g., `BINANCE_API_KEY`)
+        *   `EXCHANGENAME_API_SECRET` (e.g., `BINANCE_API_SECRET`)
+        *   `EXCHANGENAME_PASSWORD` (this is optional and only required by a few exchanges like KuCoin for API trading, e.g., `KUCOIN_PASSWORD`)
+    *   Refer to `.env.example` for a template.
 
 5.  **Run the application:**
+    Ensure your `.env` file is configured, then run:
     ```bash
-    uvicorn src.main:app --reload
+    uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
     ```
     The API will typically be available at `http://127.0.0.1:8000`.
 
@@ -68,12 +72,46 @@ The following are the main API endpoints currently available:
     *   Example: `/api/v1/exchange/ohlcv?exchange_id=bitget&symbol=BTC/USDT&timeframe=5m`
 
 *   **`GET /api/v1/exchange/balance`**
-    *   Description: Fetches account balances from a specified exchange. Requires API credentials.
+    *   Description: Fetches account balances from a specified exchange. Requires API credentials (loaded from environment variables as per the convention `EXCHANGENAME_API_KEY` / `EXCHANGENAME_API_SECRET`).
     *   Query Parameters:
         *   `exchange_id` (str, required): The ID of the exchange.
-        *   `api_key` (str, optional): Exchange API key. If not provided, the application will try to use a key from environment variables (e.g., `BITGET_API_KEY`).
-        *   `api_secret` (str, optional): Exchange API secret. If not provided, the application will try to use a secret from environment variables.
-    *   Example: `/api/v1/exchange/balance?exchange_id=mexc&api_key=your_key&api_secret=your_secret`
+        *   `api_key` (str, optional): **Deprecated**. API keys are now primarily managed via environment variables. Providing keys via query parameters might be removed or disabled for security reasons in future versions.
+        *   `api_secret` (str, optional): **Deprecated**.
+    *   Example: `/api/v1/exchange/balance?exchange_id=binance` (assuming `BINANCE_API_KEY` and `BINANCE_API_SECRET` are set in `.env`).
+
+*   **`POST /api/v1/orders/place`**
+    *   Description: Places a new order on the specified exchange and records it in the database.
+    *   Request Body (`OrderRequest` schema):
+        *   `exchange_id` (str): ID of the exchange (e.g., "binance").
+        *   `symbol` (str): Trading symbol (e.g., "BTC/USDT").
+        *   `amount` (float): Quantity of the asset to buy/sell.
+        *   `side` (str): "buy" or "sell".
+        *   `type` (str): "market" or "limit".
+        *   `price` (Optional[float]): Required if `type` is "limit".
+        *   `user_id` (Optional[int]): Placeholder for user identification (default: 1).
+        *   `is_spot` (bool): `true` for spot trading, `false` for futures (default: `true`).
+        *   `client_order_id` (Optional[str]): A unique client-side identifier for the order.
+    *   Response (`OrderResponse` schema): Includes the fields from `OrderRequest` plus:
+        *   `id` (int): Internal database ID of the order.
+        *   `exchange_order_id` (Optional[str]): The ID assigned to the order by the exchange.
+        *   `timestamp` (datetime): Order creation timestamp (UTC).
+        *   `status` (str): Current status of the order (e.g., "open", "filled", "rejected", "rejected_insufficient_funds").
+        *   `filled_amount` (float): Amount of the asset that has been filled.
+        *   `remaining_amount` (float): Amount remaining to be filled.
+        *   `cost` (float): Total cost of the filled portion of the order.
+        *   `fee` (Optional[float]): Trading fee paid.
+        *   `fee_currency` (Optional[str]): Currency of the trading fee.
+    *   Example: `POST /api/v1/orders/place` with JSON body:
+        ```json
+        {
+          "exchange_id": "binance",
+          "symbol": "BTC/USDT",
+          "amount": 0.001,
+          "side": "buy",
+          "type": "limit",
+          "price": 25000.0
+        }
+        ```
 
 *   **`GET /market/market-overview/`**
     *   Description: Provides a real-time market overview for a predefined set of cryptocurrency symbols.
