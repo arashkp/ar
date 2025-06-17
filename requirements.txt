@@ -8,4 +8,4 @@ pydantic-settings
 pytest
 pytest-asyncio
 pandas
-talib-python
+ta
