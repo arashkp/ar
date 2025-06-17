@@ -22,5 +22,9 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
+        # Allow Pydantic to ignore extra fields from .env or environment variables
+        # This prevents ValidationError if undefined keys (e.g. placeholder exchange_api_key)
+        # are present but not explicitly defined in the Settings model.
+        extra = 'ignore'
 
 settings = Settings()
