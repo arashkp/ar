@@ -1,9 +1,22 @@
 from fastapi import APIRouter, HTTPException
+import logging
 from typing import List
 import pandas as pd
-import talib
+try:
+    import talib
+except ImportError:
+    logging.getLogger(__name__).warning("TA-Lib not found, technical indicators will be skipped.")
+    talib = None
+# TA-Lib is an external C library and Python wrapper. It's required for calculating
+# technical indicators like EMA and SMA. If not installed, these indicators will be skipped.
+# Installation can be complex, often requiring `libta-lib-dev` or building the C library from source
+# before the Python package `TA-Lib` can be installed.
 import ccxt.async_support as ccxt
 from pydantic import BaseModel
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 class MarketOverviewItem(BaseModel):
     symbol: str
@@ -13,12 +26,16 @@ class MarketOverviewItem(BaseModel):
     support_levels: List[float]
     resistance_levels: List[float]
 
+# Configuration for symbols to fetch.
+# NOTE: Binance (and potentially other exchanges) may employ geoblocking.
+# If API calls to an exchange consistently fail with errors like 451 (Binance)
+# or other access restrictions, it might be due to the server's location being
+# in a region restricted by the exchange.
 SYMBOL_CONFIG = [
     {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin"},
     {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum"},
     {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin"},
     {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui"},
-    {"symbol": "POPCAT/USDT", "exchange_id": "bitget", "name": "Popcat"},
     {"symbol": "HYPE/USDT", "exchange_id": "bitget", "name": "HypeCoin"},
 ]
 
@@ -44,16 +61,16 @@ async def get_market_overview():
                         exchange_class = getattr(ccxt, exchange_id)
                         exchange = exchange_class({'enableRateLimit': True})
                         active_exchanges[exchange_id] = exchange
-                        print(f"Initialized {exchange_id} for {symbol}")
+                        logger.info(f"Initialized {exchange_id} for {symbol}")
                     except AttributeError:
-                        print(f"Error: Exchange ID '{exchange_id}' for symbol {symbol} is not a valid ccxt exchange. Skipping.")
+                        logger.critical(f"Exchange ID '{exchange_id}' for symbol {symbol} is not a valid ccxt exchange. Skipping.")
                         results.append(MarketOverviewItem(
                             symbol=symbol, current_price=0.0, ema_20=None, sma_50=None,
                             support_levels=[], resistance_levels=[]
                         ))
                         continue
                     except Exception as e:
-                        print(f"Error initializing exchange {exchange_id} for symbol {symbol}: {e}. Skipping.")
+                        logger.critical(f"Error initializing exchange {exchange_id} for symbol {symbol}: {e}. Skipping.")
                         results.append(MarketOverviewItem(
                             symbol=symbol, current_price=0.0, ema_20=None, sma_50=None,
                             support_levels=[], resistance_levels=[]
@@ -61,36 +78,47 @@ async def get_market_overview():
                         continue
 
                 # Fetch Ticker for current price
+                logger.info(f"Fetching ticker for {symbol} on {exchange_id}")
                 ticker = await exchange.fetch_ticker(symbol)
                 current_price = ticker['last'] if ticker and 'last' in ticker and ticker['last'] else 0.0
+                logger.info(f"Fetched ticker for {symbol} on {exchange_id}. Current price: {current_price}")
 
                 # Fetch OHLCV data
+                logger.info(f"Fetching OHLCV for {symbol} on {exchange_id}")
                 ohlcv = await exchange.fetch_ohlcv(symbol, timeframe='1h', limit=100)
                 if not ohlcv:
+                    logger.warning(f"No OHLCV data returned for {symbol} on {exchange_id}. Skipping TA calculations.")
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_20=None, sma_50=None,
                         support_levels=[], resistance_levels=[]
                     ))
                     continue
+                logger.info(f"Fetched OHLCV for {symbol} on {exchange_id}. Data length: {len(ohlcv)}")
 
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
                 if len(df) < 50: # Minimum needed for SMA50
+                    logger.warning(f"Not enough data points for {symbol} to calculate SMA50 (need 50, got {len(df)}). Skipping TA calculations.")
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_20=None, sma_50=None,
-                        support_levels=sorted(df['low'].nsmallest(5).tolist()),
-                        resistance_levels=sorted(df['high'].nlargest(5).tolist())
+                        support_levels=sorted(df['low'].nsmallest(5).tolist()) if not df.empty else [],
+                        resistance_levels=sorted(df['high'].nlargest(5).tolist()) if not df.empty else []
                     ))
                     continue
 
-                # Calculate EMA(20) and SMA(50)
-                df['ema_20'] = talib.EMA(df['close'], timeperiod=20)
-                df['sma_50'] = talib.SMA(df['close'], timeperiod=50)
+                latest_ema_20 = None
+                latest_sma_50 = None
+                if talib:
+                    # Calculate EMA(20) and SMA(50)
+                    df['ema_20'] = talib.EMA(df['close'], timeperiod=20)
+                    df['sma_50'] = talib.SMA(df['close'], timeperiod=50)
 
-                latest_ema_20 = df['ema_20'].iloc[-1]
-                latest_sma_50 = df['sma_50'].iloc[-1]
+                    latest_ema_20 = df['ema_20'].iloc[-1]
+                    latest_sma_50 = df['sma_50'].iloc[-1]
+                else:
+                    logger.warning(f"TA-Lib is not available. Skipping EMA and SMA calculation for {symbol}.")
 
-                support_levels = sorted(df['low'].nsmallest(5).tolist())
+                support_levels = sorted(df['low'].nsmallest(5).tolist()) if not df.empty else []
                 resistance_levels = sorted(df['high'].nlargest(5).tolist())
 
                 results.append(MarketOverviewItem(
@@ -101,13 +129,13 @@ async def get_market_overview():
                 ))
 
             except ccxt.NetworkError as e:
-                print(f"Network error for {symbol} on {exchange_id}: {e}")
+                logger.error(f"Network error for {symbol} on {exchange_id}: {e}. Default data returned.")
                 results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
             except ccxt.ExchangeError as e:
-                print(f"Exchange error for {symbol} on {exchange_id}: {e}")
+                logger.error(f"Exchange error for {symbol} on {exchange_id}: {e}. Default data returned.")
                 results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
             except Exception as e:
-                print(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}")
+                logger.error(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}. Default data returned.")
                 results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
 
     finally:
@@ -115,10 +143,11 @@ async def get_market_overview():
             if ex_instance:
                 try:
                     await ex_instance.close()
-                    print(f"Closed {ex_id} exchange.")
+                    logger.info(f"Closed {ex_id} exchange.")
                 except Exception as e:
-                    print(f"Error closing {ex_id} exchange: {e}")
+                    logger.error(f"Error closing {ex_id} exchange: {e}")
 
     if not results and SYMBOL_CONFIG: # Only raise if SYMBOL_CONFIG was not empty and still no results
+         logger.error("Could not fetch any market data for the configured symbols.")
          raise HTTPException(status_code=500, detail="Could not fetch any market data for the configured symbols.")
     return results
