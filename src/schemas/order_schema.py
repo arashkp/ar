@@ -23,8 +23,8 @@ class OrderRequest(OrderBase):
         return v
 
 class OrderCreate(OrderBase):
-    exchange_order_id: Optional[str] = None
-    status: str = 'pending' # Initial status before sending to exchange
+    exchange_order_id: Optional[str] = None # Should be provided if the order already exists on an exchange
+    status: str = 'pending' # Initial status, e.g., 'pending' if new, or actual status if known
     # Fields that will be calculated or set based on other fields or logic
     # before saving to DB, not directly from request.
     # For example, cost and remaining_amount might be set by the service layer.

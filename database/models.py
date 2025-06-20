@@ -26,7 +26,7 @@ class Trade(Base):
     fee_currency = Column(String, nullable=True)
     pnl = Column(Numeric(precision=20, scale=10), default=0.0, nullable=True)
     is_spot = Column(Boolean, default=True, nullable=False)
-    order_id = Column(String, nullable=True, index=True) # Could be a ForeignKey to an 'orders' table if that's the exchange_order_id
+    order_id = Column(String, nullable=True, index=True) # Stores the exchange_order_id from the 'orders' table (Order.exchange_order_id)
     # If order_id refers to the id of the Order model below, it should be:
     # internal_order_id = Column(Integer, ForeignKey('orders.id'), nullable=True)
 

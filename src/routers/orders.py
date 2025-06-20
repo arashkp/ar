@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 import ccxt # Import ccxt for its specific exceptions
 
 from src.database.session import get_db
-from src.schemas.order_schema import OrderRequest, OrderResponse
+from src.schemas.order_schema import OrderRequest, OrderResponse, OrderCreate # Added OrderCreate
 from src.services import order_manager # Assuming order_manager has the place_order function
+from src.crud import orders as crud_orders # Added import for crud_orders
 from src.database.models import Order # For type hinting if needed, though response_model handles conversion
 
 router = APIRouter(
@@ -12,6 +13,30 @@ router = APIRouter(
     tags=["orders"],
     responses={404: {"description": "Not found"}},
 )
+
+# New endpoint for directly creating an order
+@router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+async def create_new_order_entry(
+    order: OrderCreate, # Use OrderCreate schema
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new order entry directly in the database.
+    This endpoint is for scenarios where an order is recorded without
+    initiating it through the system's exchange placement logic (e.g., importing existing orders).
+    """
+    try:
+        # The OrderCreate schema should contain all necessary fields,
+        # including exchange_order_id and status, if known.
+        created_order_db = crud_orders.create_order(db=db, order=order)
+        return created_order_db
+    except Exception as e:
+        # Perform basic error logging if possible, or ensure CRUD layer handles it
+        # logger.error(f"Error creating order entry: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while creating the order entry: {str(e)}"
+        )
 
 @router.post("/place", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def place_new_order(
