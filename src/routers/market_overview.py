@@ -6,10 +6,10 @@ import pandas_ta as ta
 import ccxt.async_support as ccxt
 from pydantic import BaseModel
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
 
 class MarketOverviewItem(BaseModel):
     symbol: str
@@ -19,13 +19,14 @@ class MarketOverviewItem(BaseModel):
     support_levels: List[float]
     resistance_levels: List[float]
 
+
 SYMBOL_CONFIG = [
     {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin"},
     {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum"},
     {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin"},
     {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui"},
-    {"symbol": "POPCAT/USDT", "exchange_id": "bitget", "name": "Popcat"},
-    {"symbol": "HYPE/USDT", "exchange_id": "bitget", "name": "HypeCoin"},
+    {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat"},
+    {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin"},
 ]
 
 router = APIRouter()
@@ -40,7 +41,6 @@ async def get_market_overview():
         for config_item in SYMBOL_CONFIG:
             symbol = config_item["symbol"]
             exchange_id = config_item["exchange_id"]
-            exchange = None
 
             try:
                 # Get or create the exchange instance
@@ -53,14 +53,16 @@ async def get_market_overview():
                         active_exchanges[exchange_id] = exchange
                         logger.info(f"Initialized {exchange_id} for {symbol}")
                     except AttributeError:
-                        logger.critical(f"Exchange ID '{exchange_id}' for symbol {symbol} is not a valid ccxt exchange. Skipping.")
+                        logger.critical(
+                            f"Exchange ID '{exchange_id}' for symbol {symbol} is not a valid ccxt exchange. Skipping.")
                         results.append(MarketOverviewItem(
                             symbol=symbol, current_price=0.0, ema_20=None, sma_50=None,
                             support_levels=[], resistance_levels=[]
                         ))
                         continue
                     except Exception as e:
-                        logger.critical(f"Error initializing exchange {exchange_id} for symbol {symbol}: {e}. Skipping.")
+                        logger.critical(
+                            f"Error initializing exchange {exchange_id} for symbol {symbol}: {e}. Skipping.")
                         results.append(MarketOverviewItem(
                             symbol=symbol, current_price=0.0, ema_20=None, sma_50=None,
                             support_levels=[], resistance_levels=[]
@@ -82,8 +84,9 @@ async def get_market_overview():
 
                 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
-                if len(df) < 50: # Minimum needed for SMA50
-                    logger.warning(f"Not enough data points for {symbol} to calculate SMA50 (need 50, got {len(df)}). Skipping TA calculations.")
+                if len(df) < 50:  # Minimum needed for SMA50
+                    logger.warning(
+                        f"Not enough data points for {symbol} to calculate SMA50 (need 50, got {len(df)}). Skipping TA calculations.")
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_20=None, sma_50=None,
                         support_levels=sorted(df['low'].nsmallest(5).tolist()) if not df.empty else [],
@@ -110,13 +113,19 @@ async def get_market_overview():
 
             except ccxt.NetworkError as e:
                 logger.error(f"Network error for {symbol} on {exchange_id}: {e}. Default data returned.")
-                results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
+                results.append(
+                    MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[],
+                                       resistance_levels=[]))
             except ccxt.ExchangeError as e:
                 logger.error(f"Exchange error for {symbol} on {exchange_id}: {e}. Default data returned.")
-                results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
+                results.append(
+                    MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[],
+                                       resistance_levels=[]))
             except Exception as e:
                 logger.error(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}. Default data returned.")
-                results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[], resistance_levels=[]))
+                results.append(
+                    MarketOverviewItem(symbol=symbol, current_price=0.0, ema_20=None, sma_50=None, support_levels=[],
+                                       resistance_levels=[]))
 
     finally:
         for ex_id, ex_instance in active_exchanges.items():
@@ -127,7 +136,7 @@ async def get_market_overview():
                 except Exception as e:
                     print(f"Error closing {ex_id} exchange: {e}")
 
-    if not results and SYMBOL_CONFIG: # Only raise if SYMBOL_CONFIG was not empty and still no results
-         logger.error("Could not fetch any market data for the configured symbols.")
-         raise HTTPException(status_code=500, detail="Could not fetch any market data for the configured symbols.")
+    if not results and SYMBOL_CONFIG:  # Only raise if SYMBOL_CONFIG was not empty and still no results
+        logger.error("Could not fetch any market data for the configured symbols.")
+        raise HTTPException(status_code=500, detail="Could not fetch any market data for the configured symbols.")
     return results
