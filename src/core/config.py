@@ -24,10 +24,9 @@ class Settings(BaseSettings):
     CACHE_DIRECTORY: str = "market_cache/"  # Path relative to the project root
     MAX_CANDLES_TO_CACHE: int = 3000       # Max number of candles to store and use for analysis
     EXTREMA_ORDER: int = 10                # Order for argrelextrema (window size for finding local S/R)
+    ATR_MULTIPLIER_FOR_GAP: float = 2.0    # ATR multiplier for gap calculation
 
-    # Rational Gap Configuration
-    BASE_BTC_USD_GAP: float = 500.0          # The reference gap in USDT for BTC (e.g., $500)
-    DEFAULT_MIN_PRICE_GAP_USD: float = 10.0  # A default absolute minimum gap in USDT, if calculated gap is too small
+    # Rational Gap Configuration - Removed BASE_BTC_USD_GAP and DEFAULT_MIN_PRICE_GAP_USD
 
     model_config = {"extra": "ignore"}
 

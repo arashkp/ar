@@ -235,12 +235,12 @@ class MarketOverviewItem(BaseModel):
 # No need for global placeholders here.
 
 SYMBOL_CONFIG = [
-    {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin"},
-    {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum"},
-    {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin"},
-    {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui"},
-    {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat"},
-    {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin"},
+    {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin", "desired_gap_usdt": 500.0},
+    {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum", "desired_gap_usdt": 25.0},
+    {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin", "desired_gap_usdt": 0.001},
+    {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui", "desired_gap_usdt": 0.0083},
+    {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat", "desired_gap_usdt": 0.0033},
+    {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin", "desired_gap_usdt": 0.0004}
 ]
 
 router = APIRouter()
@@ -250,33 +250,7 @@ router = APIRouter()
 async def get_market_overview():
     results = []
     active_exchanges = {}  # Dictionary to store active exchange instances
-    btc_usdt_price: Optional[float] = None
-
-    # Attempt to get BTC/USDT price for relative gap calculations
-    temp_exchange_id_for_btc = 'binance'
-    try:
-        if temp_exchange_id_for_btc not in active_exchanges:
-            try:
-                exchange_class_btc = getattr(ccxt, temp_exchange_id_for_btc)
-                temp_exchange_btc = exchange_class_btc({'enableRateLimit': True})
-                active_exchanges[temp_exchange_id_for_btc] = temp_exchange_btc
-                logger.info(f"Initialized temporary {temp_exchange_id_for_btc} for BTC price fetch.")
-            except Exception as e:
-                logger.error(f"Could not initialize {temp_exchange_id_for_btc} for BTC price: {e}")
-                temp_exchange_btc = None
-        else:
-            temp_exchange_btc = active_exchanges[temp_exchange_id_for_btc]
-
-        if temp_exchange_btc:
-            btc_ticker = await temp_exchange_btc.fetch_ticker("BTC/USDT")
-            if btc_ticker and 'last' in btc_ticker and btc_ticker['last'] is not None:
-                btc_usdt_price = float(btc_ticker['last'])
-                logger.info(f"Fetched BTC/USDT price for gap calculation: {btc_usdt_price}")
-            else:
-                logger.warning("Could not fetch BTC/USDT ticker 'last' price for gap calculation.")
-        # The exchange instance will be closed in the main 'finally' block
-    except Exception as e:
-        logger.error(f"Error fetching BTC/USDT price: {e}. Rational gap calculation might be affected.")
+    # BTC price fetching logic removed
 
     try:
         for config_item in SYMBOL_CONFIG:
@@ -433,22 +407,16 @@ async def get_market_overview():
                     # A more robust solution might involve a fallback minimum gap, but that's outside current scope.
 
                 # Calculate effective_minimum_gap
-                symbol_specific_min_gap_usd = 0.0
-                if symbol == "BTC/USDT":
-                    symbol_specific_min_gap_usd = settings.BASE_BTC_USD_GAP
-                elif btc_usdt_price and btc_usdt_price > 0 and current_price_raw is not None and current_price_raw > 0:
-                    symbol_specific_min_gap_usd = (current_price_raw / btc_usdt_price) * settings.BASE_BTC_USD_GAP
-                else:
-                    logger.warning(f"[{symbol}] Could not calculate relative minimum gap. Using default absolute minimum gap or ATR based.")
+                current_symbol_desired_gap = config_item.get('desired_gap_usdt')
+                if current_symbol_desired_gap is None:
+                    logger.error(f"[{symbol}] 'desired_gap_usdt' not found in SYMBOL_CONFIG for this symbol. Defaulting its component to 0.")
+                    current_symbol_desired_gap = 0.0
 
-                atr_component = atr_value * 2.0 if atr_value is not None and pd.notna(atr_value) else 0.0
+                atr_component = atr_value * settings.ATR_MULTIPLIER_FOR_GAP if pd.notna(atr_value) else 0.0
 
-                effective_minimum_gap = max(
-                    atr_component,
-                    symbol_specific_min_gap_usd if symbol_specific_min_gap_usd > 0 else 0.0,
-                    settings.DEFAULT_MIN_PRICE_GAP_USD
-                )
-                logger.info(f"[{symbol}] ATR: {atr_value:.4f}, ATR*2: {atr_component:.4f}, SymbolSpecificMinGapUSD: {symbol_specific_min_gap_usd:.4f}, DefaultMinGapUSD: {settings.DEFAULT_MIN_PRICE_GAP_USD:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
+                effective_minimum_gap = max(atr_component, current_symbol_desired_gap)
+
+                logger.info(f"[{symbol}] ATR: {atr_value if pd.notna(atr_value) else 'N/A':.4f}, ATR*{settings.ATR_MULTIPLIER_FOR_GAP}: {atr_component:.4f}, DesiredGapUSDT: {current_symbol_desired_gap:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
 
                 # Initialize support and resistance items
                 support_level_items = []
