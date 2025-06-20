@@ -8,9 +8,10 @@ from scipy.signal import argrelextrema
 import pandas_ta as ta
 import ccxt.async_support as ccxt
 from pydantic import BaseModel
-import os # If not already imported
-from src.services.cache_manager import read_ohlcv_from_cache, write_ohlcv_to_cache # Assuming cache_manager is in src.services
-from src.core.config import settings # Import settings
+import os  # If not already imported
+from src.services.cache_manager import read_ohlcv_from_cache, \
+    write_ohlcv_to_cache  # Assuming cache_manager is in src.services
+from src.core.config import settings  # Import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,16 +38,16 @@ def format_value(value: float | None, precision: int) -> float | None:
 # decimal should already be imported
 
 def generate_fibonacci_levels(
-    swing_low_price: float,
-    swing_high_price: float,
-    current_price: float,
-    is_support: bool,
-    num_needed: int,
-    existing_levels_raw: list[float],
-    effective_min_gap: float,
-    atr_value: float,
-    price_precision: int,
-    logger
+        swing_low_price: float,
+        swing_high_price: float,
+        current_price: float,
+        is_support: bool,
+        num_needed: int,
+        existing_levels_raw: list[float],
+        effective_min_gap: float,
+        atr_value: float,
+        price_precision: int,
+        logger
 ) -> list[float]:
     """
     Generates Fibonacci levels based on a swing, filtering for support/resistance
@@ -141,7 +142,7 @@ def generate_fibonacci_levels(
                     # ATR Gap: level_raw should be effective_min_gap away from last_added_fib_level (which could be an existing S/R or a Fib)
                     # For support, new level must be significantly lower.
                     if not (last_added_fib_level - level_raw >= effective_min_gap):
-                         is_far_enough_from_existing = False
+                        is_far_enough_from_existing = False
 
             # Simplified check: avoid adding a level too close to any *raw* existing level
             # A small tolerance, e.g., atr_value / 4 or a fixed percentage
@@ -234,16 +235,17 @@ class MarketOverviewItem(BaseModel):
     support_levels: List[LevelItem]
     resistance_levels: List[LevelItem]
 
+
 # Config values CACHE_DIRECTORY and MAX_CANDLES_TO_CACHE are now sourced from settings.
 # No need for global placeholders here.
 
 SYMBOL_CONFIG = [
     {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin", "desired_gap_usdt": 500.0},
-    {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum", "desired_gap_usdt": 25.0},
-    {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin", "desired_gap_usdt": 0.001},
-    {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui", "desired_gap_usdt": 0.0083},
-    {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat", "desired_gap_usdt": 0.0033},
-    {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin", "desired_gap_usdt": 0.0004}
+    {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum", "desired_gap_usdt": 50},
+    {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin", "desired_gap_usdt": 0.003},
+    {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui", "desired_gap_usdt": 0.05},
+    {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat", "desired_gap_usdt": 0.005},
+    {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin", "desired_gap_usdt": 0.7}
 ]
 
 router = APIRouter()
@@ -268,13 +270,15 @@ async def get_market_overview():
             cached_df = read_ohlcv_from_cache(settings.CACHE_DIRECTORY, symbol)
 
             if cached_df is not None and not cached_df.empty:
-                cached_df.sort_values(by='timestamp', ascending=True, inplace=True) # Ensure sorted
+                cached_df.sort_values(by='timestamp', ascending=True, inplace=True)  # Ensure sorted
                 last_cached_timestamp = cached_df['timestamp'].iloc[-1]
 
-                logger.info(f"[{symbol}] Cache hit. Last cached candle timestamp: {last_cached_timestamp}, Records: {len(cached_df)}")
+                logger.info(
+                    f"[{symbol}] Cache hit. Last cached candle timestamp: {last_cached_timestamp}, Records: {len(cached_df)}")
                 # Fetching logic based on last_cached_timestamp will be in the next step
             else:
-                logger.info(f"[{symbol}] No cache found or cache is empty. Will attempt to fetch {settings.MAX_CANDLES_TO_CACHE} candles for initial cache.")
+                logger.info(
+                    f"[{symbol}] No cache found or cache is empty. Will attempt to fetch {settings.MAX_CANDLES_TO_CACHE} candles for initial cache.")
                 # candles_to_fetch_from_exchange = settings.MAX_CANDLES_TO_CACHE # will be used in next step for limit
 
             try:
@@ -317,23 +321,25 @@ async def get_market_overview():
                 current_price = format_value(current_price_raw, price_precision)
 
                 # --- Start of new/modified section for Plan Step 3 ---
-                ohlcv_from_exchange = [] # To store data fetched from exchange
-                final_df = pd.DataFrame() # To store combined data
+                ohlcv_from_exchange = []  # To store data fetched from exchange
+                final_df = pd.DataFrame()  # To store combined data
 
                 # Determine fetch parameters
                 fetch_limit = settings.MAX_CANDLES_TO_CACHE
                 fetch_since = None
 
                 if last_cached_timestamp is not None:
-                    fetch_since = int(last_cached_timestamp) # Ensure it's int
+                    fetch_since = int(last_cached_timestamp)  # Ensure it's int
                     fetch_limit = settings.MAX_CANDLES_TO_CACHE
-                    logger.info(f"[{symbol}] Cache found. Fetching new candles since: {fetch_since} (timestamp), limit: {fetch_limit}")
+                    logger.info(
+                        f"[{symbol}] Cache found. Fetching new candles since: {fetch_since} (timestamp), limit: {fetch_limit}")
                 else:
                     logger.info(f"[{symbol}] No cache. Fetching {fetch_limit} candles.")
 
                 # Fetch OHLCV data using determined parameters
-                if exchange: # Make sure exchange object is valid
-                    ohlcv_from_exchange = await exchange.fetch_ohlcv(symbol, timeframe='1h', since=fetch_since, limit=fetch_limit)
+                if exchange:  # Make sure exchange object is valid
+                    ohlcv_from_exchange = await exchange.fetch_ohlcv(symbol, timeframe='1h', since=fetch_since,
+                                                                     limit=fetch_limit)
                     logger.info(f"[{symbol}] Fetched {len(ohlcv_from_exchange)} new candles from exchange.")
                 else:
                     logger.error(f"[{symbol}] Exchange object not initialized during OHLCV fetch. Skipping fetch.")
@@ -343,7 +349,8 @@ async def get_market_overview():
                 # Process newly fetched data
                 new_data_df = pd.DataFrame()
                 if ohlcv_from_exchange:
-                    new_data_df = pd.DataFrame(ohlcv_from_exchange, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    new_data_df = pd.DataFrame(ohlcv_from_exchange,
+                                               columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     new_data_df['timestamp'] = new_data_df['timestamp'].astype('int64')
                     new_data_df.sort_values(by='timestamp', ascending=True, inplace=True)
 
@@ -379,10 +386,11 @@ async def get_market_overview():
                 # --- End of new/modified section for Plan Step 3 ---
 
                 # Existing logic uses 'df'. We need to assign final_df to df.
-                df = final_df # IMPORTANT: Ensure 'df' is the one used for TA calculations
+                df = final_df  # IMPORTANT: Ensure 'df' is the one used for TA calculations
 
                 if df.empty:
-                    logger.warning(f"[{symbol}] DataFrame is empty after cache operations and fetching. Skipping analysis for this symbol.")
+                    logger.warning(
+                        f"[{symbol}] DataFrame is empty after cache operations and fetching. Skipping analysis for this symbol.")
                     # current_price should have been fetched and formatted before this block.
                     # If not, this append might need to use a default or handle it.
                     results.append(MarketOverviewItem(
@@ -391,35 +399,40 @@ async def get_market_overview():
                         support_levels=[], resistance_levels=[]
                     ))
                     # No need to close exchange here, it's handled in the 'finally' block of the outer try.
-                    continue # To the next symbol in SYMBOL_CONFIG
+                    continue  # To the next symbol in SYMBOL_CONFIG
 
                 # --- Existing Data Processing (uses 'df') ---
-                df.ta.atr(length=14, append=True) # This line should now use the combined df
+                df.ta.atr(length=14, append=True)  # This line should now use the combined df
 
-                atr_value = df['ATR_14'].iloc[-1] if 'ATR_14' in df.columns and not df['ATR_14'].empty and pd.notna(df['ATR_14'].iloc[-1]) else 0
+                atr_value = df['ATR_14'].iloc[-1] if 'ATR_14' in df.columns and not df['ATR_14'].empty and pd.notna(
+                    df['ATR_14'].iloc[-1]) else 0
 
                 formatted_atr_14 = None
-                if pd.notna(atr_value): # Ensure atr_value is not NaN before formatting
+                if pd.notna(atr_value):  # Ensure atr_value is not NaN before formatting
                     # price_precision should be available from current_price calculation
                     formatted_atr_14 = format_value(atr_value, price_precision)
 
-                logger.info(f"Symbol: {symbol} - Calculated ATR_14: {atr_value}, Formatted: {formatted_atr_14}") # Enhanced existing log
-                if atr_value == 0: # Original check, keep for logging or specific logic if needed
-                    logger.warning(f"Symbol: {symbol} - ATR value is 0, S/R gap logic might not work as expected. Consider using a default minimum gap or handling this case.")
+                logger.info(
+                    f"Symbol: {symbol} - Calculated ATR_14: {atr_value}, Formatted: {formatted_atr_14}")  # Enhanced existing log
+                if atr_value == 0:  # Original check, keep for logging or specific logic if needed
+                    logger.warning(
+                        f"Symbol: {symbol} - ATR value is 0, S/R gap logic might not work as expected. Consider using a default minimum gap or handling this case.")
                     # For now, if ATR is 0, the ATR*2 gap will be 0. This means all levels will pass the gap check.
                     # A more robust solution might involve a fallback minimum gap, but that's outside current scope.
 
                 # Calculate effective_minimum_gap
                 current_symbol_desired_gap = config_item.get('desired_gap_usdt')
                 if current_symbol_desired_gap is None:
-                    logger.error(f"[{symbol}] 'desired_gap_usdt' not found in SYMBOL_CONFIG for this symbol. Defaulting its component to 0.")
+                    logger.error(
+                        f"[{symbol}] 'desired_gap_usdt' not found in SYMBOL_CONFIG for this symbol. Defaulting its component to 0.")
                     current_symbol_desired_gap = 0.0
 
                 atr_component = atr_value * settings.ATR_MULTIPLIER_FOR_GAP if pd.notna(atr_value) else 0.0
 
                 effective_minimum_gap = max(atr_component, current_symbol_desired_gap)
 
-                logger.info(f"[{symbol}] ATR: {atr_value if pd.notna(atr_value) else 'N/A':.4f}, ATR*{settings.ATR_MULTIPLIER_FOR_GAP}: {atr_component:.4f}, DesiredGapUSDT: {current_symbol_desired_gap:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
+                logger.info(
+                    f"[{symbol}] ATR: {atr_value if pd.notna(atr_value) else 'N/A':.4f}, ATR*{settings.ATR_MULTIPLIER_FOR_GAP}: {atr_component:.4f}, DesiredGapUSDT: {current_symbol_desired_gap:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
 
                 # Initialize support and resistance items
                 support_level_items = []
@@ -449,8 +462,9 @@ async def get_market_overview():
                             # ATR Gap Check:
                             # The first support level is always selected if it's below current price (already filtered by recent_supports).
                             # Subsequent levels must be at least effective_minimum_gap below the last_selected_support_level.
-                            if not support_level_items_filtered or (last_selected_support_level - s_level_raw >= effective_minimum_gap):
-                                if len(support_level_items_filtered) < 5: # Only add if we still need levels
+                            if not support_level_items_filtered or (
+                                    last_selected_support_level - s_level_raw >= effective_minimum_gap):
+                                if len(support_level_items_filtered) < 5:  # Only add if we still need levels
                                     tolerance = s_level_raw * 0.0005
                                     touch_count = df['low'].apply(lambda x: abs(x - s_level_raw) <= tolerance).sum()
                                     formatted_level = format_value(s_level_raw, price_precision)
@@ -495,9 +509,10 @@ async def get_market_overview():
                                     # Use raw current price for Fib calculation context
                                     is_support=True,
                                     num_needed=num_needed_support,
-                                    existing_levels_raw=raw_existing_supports, # Pass existing *formatted* levels as raw context
-                                    effective_min_gap=effective_minimum_gap, # Pass effective_minimum_gap
-                                    atr_value=atr_value, # Keep atr_value for heuristic
+                                    existing_levels_raw=raw_existing_supports,
+                                    # Pass existing *formatted* levels as raw context
+                                    effective_min_gap=effective_minimum_gap,  # Pass effective_minimum_gap
+                                    atr_value=atr_value,  # Keep atr_value for heuristic
                                     price_precision=price_precision,
                                     logger=logger
                                 )
@@ -541,7 +556,8 @@ async def get_market_overview():
                             f"Final support levels for {symbol} ({len(support_level_items)} levels): {[item.level for item in support_level_items]}")
 
                         # Find local maxima for resistance levels
-                        high_extrema_indices = argrelextrema(df['high'].values, np.greater, order=settings.EXTREMA_ORDER)[0]
+                        high_extrema_indices = \
+                        argrelextrema(df['high'].values, np.greater, order=settings.EXTREMA_ORDER)[0]
                         local_highs = df['high'].iloc[high_extrema_indices].unique()
                         logger.debug(
                             f"Symbol: {symbol} - Initial raw local_highs > current_price_raw: {sorted([high for high in local_highs if high > current_price_raw])}")
@@ -557,8 +573,9 @@ async def get_market_overview():
                             # ATR Gap Check:
                             # The first resistance level is always selected if it's above current price (already filtered by recent_resistances).
                             # Subsequent levels must be at least effective_minimum_gap above the last_selected_resistance_level.
-                            if not resistance_level_items_filtered or (r_level_raw - last_selected_resistance_level >= effective_minimum_gap):
-                                if len(resistance_level_items_filtered) < 5: # Only add if we still need levels
+                            if not resistance_level_items_filtered or (
+                                    r_level_raw - last_selected_resistance_level >= effective_minimum_gap):
+                                if len(resistance_level_items_filtered) < 5:  # Only add if we still need levels
                                     tolerance = r_level_raw * 0.0005
                                     touch_count = df['high'].apply(lambda x: abs(x - r_level_raw) <= tolerance).sum()
                                     formatted_level = format_value(r_level_raw, price_precision)
@@ -597,8 +614,8 @@ async def get_market_overview():
                                     is_support=False,  # Key change for resistance
                                     num_needed=num_needed_resistance,
                                     existing_levels_raw=raw_existing_resistances,
-                                    effective_min_gap=effective_minimum_gap, # Pass effective_minimum_gap
-                                    atr_value=atr_value, # Keep atr_value for heuristic
+                                    effective_min_gap=effective_minimum_gap,  # Pass effective_minimum_gap
+                                    atr_value=atr_value,  # Keep atr_value for heuristic
                                     price_precision=price_precision,
                                     logger=logger
                                 )
@@ -660,7 +677,8 @@ async def get_market_overview():
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_21=None, ema_89=None,
                         # current_price is already formatted
-                        sma_30=None, sma_150=None, sma_300=None, atr_14=formatted_atr_14, # Use formatted_atr_14 (could be None)
+                        sma_30=None, sma_150=None, sma_300=None, atr_14=formatted_atr_14,
+                        # Use formatted_atr_14 (could be None)
                         support_levels=support_level_items,
                         resistance_levels=resistance_level_items
                     ))
@@ -691,7 +709,7 @@ async def get_market_overview():
                     sma_30=formatted_sma_30,
                     sma_150=formatted_sma_150,
                     sma_300=formatted_sma_300,
-                    atr_14=formatted_atr_14, # Add formatted_atr_14 here
+                    atr_14=formatted_atr_14,  # Add formatted_atr_14 here
                     support_levels=support_level_items,  # Already formatted
                     resistance_levels=resistance_level_items  # Already formatted
                 ))
