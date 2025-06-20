@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     # BINANCE_API_KEY: Optional[str] = os.getenv("BINANCE_API_KEY")
     # BINANCE_API_SECRET: Optional[str] = os.getenv("BINANCE_API_SECRET")
 
+    # Caching Configuration
+    CACHE_DIRECTORY: str = "market_cache/"  # Path relative to the project root
+    MAX_CANDLES_TO_CACHE: int = 3000       # Max number of candles to store and use for analysis
+    EXTREMA_ORDER: int = 10                # Order for argrelextrema (window size for finding local S/R)
+
+    # Rational Gap Configuration
+    BASE_BTC_USD_GAP: float = 500.0          # The reference gap in USDT for BTC (e.g., $500)
+    DEFAULT_MIN_PRICE_GAP_USD: float = 10.0  # A default absolute minimum gap in USDT, if calculated gap is too small
+
     model_config = {"extra": "ignore"}
 
 
