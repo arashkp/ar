@@ -8,4 +8,4 @@ pydantic-settings
 pytest
 pytest-asyncio
 pandas
-ta
+pandas-ta

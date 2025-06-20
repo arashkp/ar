@@ -92,8 +92,8 @@ async def get_market_overview():
                     continue
 
                 # Calculate EMA(20) and SMA(50)
-                df['ema_20'] = ta.EMA(df['close'], timeperiod=20)
-                df['sma_50'] = ta.SMA(df['close'], timeperiod=50)
+                df['ema_20'] = df.ta.ema(length=20)
+                df['sma_50'] = df.ta.sma(length=50)
 
                 latest_ema_20 = df['ema_20'].iloc[-1]
                 latest_sma_50 = df['sma_50'].iloc[-1]
