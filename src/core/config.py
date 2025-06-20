@@ -2,12 +2,13 @@ from pydantic_settings import BaseSettings
 import os
 from typing import Optional
 
+
 class Settings(BaseSettings):
     # Database connection string.
     # Examples:
     #   SQLite: "sqlite:///./test.db"
     #   PostgreSQL: "postgresql://user:password@host:port/dbname"
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./ar_trade.db") # Defaulted to ar_trade.db
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./ar_trade.db")  # Defaulted to ar_trade.db
 
     # Exchange API keys are generally not defined here directly in the Settings model.
     # Instead, they are loaded on-demand by services (like order_manager.py)
@@ -19,12 +20,7 @@ class Settings(BaseSettings):
     # BINANCE_API_KEY: Optional[str] = os.getenv("BINANCE_API_KEY")
     # BINANCE_API_SECRET: Optional[str] = os.getenv("BINANCE_API_SECRET")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = 'utf-8'
-        # Allow Pydantic to ignore extra fields from .env or environment variables
-        # This prevents ValidationError if undefined keys (e.g. placeholder exchange_api_key)
-        # are present but not explicitly defined in the Settings model.
-        extra = 'ignore'
+    model_config = {"extra": "ignore"}
+
 
 settings = Settings()
