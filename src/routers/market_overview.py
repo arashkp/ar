@@ -12,9 +12,11 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
 class LevelItem(BaseModel):
     level: float
     description: str
+
 
 class MarketOverviewItem(BaseModel):
     symbol: str
@@ -84,7 +86,7 @@ async def get_market_overview():
                 current_price = ticker['last'] if ticker and 'last' in ticker and ticker['last'] else 0.0
 
                 # Fetch OHLCV data
-                ohlcv = await exchange.fetch_ohlcv(symbol, timeframe='1h', limit=350) # Increased limit for SMA300
+                ohlcv = await exchange.fetch_ohlcv(symbol, timeframe='1h', limit=350)  # Increased limit for SMA300
                 if not ohlcv:
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_21=None, ema_89=None,
@@ -124,7 +126,7 @@ async def get_market_overview():
                                     support_level_items.append(LevelItem(level=level, description="Historical Low"))
                                 else:
                                     break
-                            support_level_items.sort(key=lambda x: x.level, reverse=True) # Sort all supports
+                            support_level_items.sort(key=lambda x: x.level, reverse=True)  # Sort all supports
 
                         # Find local maxima for resistance levels
                         high_extrema_indices = argrelextrema(df['high'].values, np.greater, order=extrema_order)[0]
@@ -139,29 +141,33 @@ async def get_market_overview():
                         if len(resistance_level_items) < 5:
                             num_needed = 5 - len(resistance_level_items)
                             existing_levels = {item.level for item in resistance_level_items}
-                            historical_highs = df['high'][~df['high'].isin(existing_levels)].nlargest(num_needed).unique()
+                            historical_highs = df['high'][~df['high'].isin(existing_levels)].nlargest(
+                                num_needed).unique()
                             for level in historical_highs:
                                 if len(resistance_level_items) < 5:
                                     resistance_level_items.append(LevelItem(level=level, description="Historical High"))
                                 else:
                                     break
-                            resistance_level_items.sort(key=lambda x: x.level) # Sort all resistances
+                            resistance_level_items.sort(key=lambda x: x.level)  # Sort all resistances
 
-                    else: # Not enough data for reliable extrema detection, use n-smallest/n-largest
-                        logger.info(f"Using n-smallest/n-largest for S/R for {symbol} due to insufficient data for extrema (got {len(df)}, need {min_data_for_extrema})")
+                    else:  # Not enough data for reliable extrema detection, use n-smallest/n-largest
+                        logger.info(
+                            f"Using n-smallest/n-largest for S/R for {symbol} due to insufficient data for extrema (got {len(df)}, need {min_data_for_extrema})")
                         raw_supports = sorted(df['low'].nsmallest(5).tolist())
                         raw_resistances = sorted(df['high'].nlargest(5).tolist())
                         support_level_items = [LevelItem(level=sl, description="Historical Low") for sl in raw_supports]
-                        resistance_level_items = [LevelItem(level=rl, description="Historical High") for rl in raw_resistances]
+                        resistance_level_items = [LevelItem(level=rl, description="Historical High") for rl in
+                                                  raw_resistances]
 
-                if len(df) < 300: # Minimum needed for all TAs
-                    logger.warning(f"Not enough data points for {symbol} to calculate all TAs (need 300, got {len(df)}). Skipping TA calculations.")
+                if len(df) < 300:  # Minimum needed for all TAs
+                    logger.warning(
+                        f"Not enough data points for {symbol} to calculate all TAs (need 300, got {len(df)}). Skipping TA calculations.")
                     # Support and resistance already calculated above if possible
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price, ema_21=None, ema_89=None,
                         sma_30=None, sma_150=None, sma_300=None,
-                        support_levels=support_level_items, # Use already computed S/R
-                        resistance_levels=resistance_level_items # Use already computed S/R
+                        support_levels=support_level_items,  # Use already computed S/R
+                        resistance_levels=resistance_level_items  # Use already computed S/R
                     ))
                     continue
 
@@ -188,19 +194,25 @@ async def get_market_overview():
                     sma_30=latest_sma_30 if pd.notna(latest_sma_30) else None,
                     sma_150=latest_sma_150 if pd.notna(latest_sma_150) else None,
                     sma_300=latest_sma_300 if pd.notna(latest_sma_300) else None,
-                    support_levels=support_level_items, # Use already computed S/R
-                    resistance_levels=resistance_level_items # Use already computed S/R
+                    support_levels=support_level_items,  # Use already computed S/R
+                    resistance_levels=resistance_level_items  # Use already computed S/R
                 ))
 
             except ccxt.NetworkError as e:
                 logger.error(f"Network error for {symbol} on {exchange_id}: {e}. Default data returned.")
-                results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, support_levels=[], resistance_levels=[]))
+                results.append(
+                    MarketOverviewItem(symbol=symbol, current_price=0.0, ema_21=None, ema_89=None, sma_30=None,
+                                       sma_150=None, sma_300=None, support_levels=[], resistance_levels=[]))
             except ccxt.ExchangeError as e:
                 logger.error(f"Exchange error for {symbol} on {exchange_id}: {e}. Default data returned.")
-                results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, support_levels=[], resistance_levels=[]))
+                results.append(
+                    MarketOverviewItem(symbol=symbol, current_price=0.0, ema_21=None, ema_89=None, sma_30=None,
+                                       sma_150=None, sma_300=None, support_levels=[], resistance_levels=[]))
             except Exception as e:
                 logger.error(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}. Default data returned.")
-                results.append(MarketOverviewItem(symbol=symbol, current_price=0.0, ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, support_levels=[], resistance_levels=[]))
+                results.append(
+                    MarketOverviewItem(symbol=symbol, current_price=0.0, ema_21=None, ema_89=None, sma_30=None,
+                                       sma_150=None, sma_300=None, support_levels=[], resistance_levels=[]))
 
     finally:
         for ex_id, ex_instance in active_exchanges.items():
