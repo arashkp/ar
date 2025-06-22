@@ -391,32 +391,64 @@ async def get_market_overview():
                 if df.empty:
                     logger.warning(
                         f"[{symbol}] DataFrame is empty after cache operations and fetching. Skipping analysis for this symbol.")
-                    # current_price should have been fetched and formatted before this block.
-                    # If not, this append might need to use a default or handle it.
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price if current_price is not None else 0.0,
                         ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
                         support_levels=[], resistance_levels=[]
                     ))
-                    # No need to close exchange here, it's handled in the 'finally' block of the outer try.
                     continue  # To the next symbol in SYMBOL_CONFIG
 
                 # --- Existing Data Processing (uses 'df') ---
-                df.ta.atr(length=14, append=True)  # This line should now use the combined df
+                logger.info(f"[{symbol}] DataFrame shape before ATR calculation: {df.shape}")
+                if not df.empty and len(df) > 5:
+                    logger.info(f"[{symbol}] DataFrame head before ATR calculation:\n{df.head()}")
+                    logger.info(f"[{symbol}] DataFrame tail before ATR calculation:\n{df.tail()}")
+                elif not df.empty:
+                    logger.info(f"[{symbol}] DataFrame contents before ATR calculation (less than 5 rows):\n{df}")
 
-                atr_value = df['ATR_14'].iloc[-1] if 'ATR_14' in df.columns and not df['ATR_14'].empty and pd.notna(
-                    df['ATR_14'].iloc[-1]) else 0
+                atr_value = None  # Initialize atr_value to None
+                MIN_ROWS_FOR_ATR = 20 # Define a threshold for meaningful ATR
+
+                # Check if 'high', 'low', 'close' columns exist and if there's enough data
+                required_columns = ['high', 'low', 'close']
+                missing_cols = [col for col in required_columns if col not in df.columns]
+
+                if missing_cols:
+                    logger.error(f"[{symbol}] DataFrame is missing required columns for ATR calculation: {missing_cols}. ATR will be None.")
+                elif len(df) < MIN_ROWS_FOR_ATR:
+                    logger.warning(f"[{symbol}] DataFrame has {len(df)} rows, which is less than the minimum required ({MIN_ROWS_FOR_ATR}) for a stable ATR. ATR will be None.")
+                else:
+                    # Sufficient data and columns exist, proceed with ATR calculation
+                    df.ta.atr(length=14, append=True)
+                    if 'ATR_14' in df.columns:
+                        if not df['ATR_14'].empty and pd.notna(df['ATR_14'].iloc[-1]):
+                            atr_value = df['ATR_14'].iloc[-1]
+                            logger.info(f"[{symbol}] 'ATR_14' column tail after calculation:\n{df[['timestamp', 'high', 'low', 'close', 'ATR_14']].tail()}")
+                        else:
+                            logger.warning(f"[{symbol}] Last ATR_14 value is NaN or column is empty after calculation. Setting atr_value to None.")
+                            # atr_value remains None (already initialized)
+                    else:
+                        logger.error(f"[{symbol}] 'ATR_14' column not found after ta.atr call. Setting atr_value to None.")
+                        # atr_value remains None (already initialized)
 
                 formatted_atr_14 = None
-                if pd.notna(atr_value):  # Ensure atr_value is not NaN before formatting
+                if atr_value is not None and pd.notna(atr_value): # Check atr_value is not None and also not np.nan
                     # price_precision should be available from current_price calculation
                     formatted_atr_14 = format_value(atr_value, price_precision)
+                elif atr_value is None:
+                    logger.info(f"[{symbol}] ATR could not be calculated or was invalid, formatted_atr_14 remains None.")
+                else: # atr_value is likely np.nan here
+                    logger.warning(f"[{symbol}] Raw atr_value is NaN, formatted_atr_14 remains None.")
+
 
                 logger.info(
-                    f"Symbol: {symbol} - Calculated ATR_14: {atr_value}, Formatted: {formatted_atr_14}")  # Enhanced existing log
-                if atr_value == 0:  # Original check, keep for logging or specific logic if needed
+                    f"Symbol: {symbol} - Calculated Raw ATR_14: {atr_value if atr_value is not None else 'N/A'}, Formatted ATR_14: {formatted_atr_14 if formatted_atr_14 is not None else 'N/A'}")
+                if atr_value == 0: # This condition can still be true if ATR is genuinely zero
                     logger.warning(
-                        f"Symbol: {symbol} - ATR value is 0, S/R gap logic might not work as expected. Consider using a default minimum gap or handling this case.")
+                        f"Symbol: {symbol} - ATR value is 0. This might be due to very low volatility or still an issue if data was sparse. S/R gap logic might not work as expected.")
+                elif atr_value is None:
+                    logger.warning(
+                        f"Symbol: {symbol} - ATR value is None (could not be calculated). S/R gap logic will rely on desired_gap_usdt.")
                     # For now, if ATR is 0, the ATR*2 gap will be 0. This means all levels will pass the gap check.
                     # A more robust solution might involve a fallback minimum gap, but that's outside current scope.
 
