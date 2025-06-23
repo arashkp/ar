@@ -50,7 +50,7 @@ class OrderResponse(OrderBase):
     fee_currency: Optional[str] = None
 
     class Config:
-        orm_mode = True # Pydantic V1 way for ORM compatibility
+        from_attributes = True # Pydantic V2 way for ORM compatibility
         # from_attributes = True # Pydantic V2 way for ORM compatibility
         # Pydantic V2 is preferred, but sticking to orm_mode for broader compatibility for now
         # unless specified. Assuming Pydantic V1 for orm_mode. If V2 is used,
