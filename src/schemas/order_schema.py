@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone # Added timezone
 from pydantic import BaseModel, validator
 
 class OrderBase(BaseModel):
@@ -23,15 +23,20 @@ class OrderRequest(OrderBase):
         return v
 
 class OrderCreate(OrderBase):
-    exchange_order_id: Optional[str] = None # Should be provided if the order already exists on an exchange
-    status: str = 'pending' # Initial status, e.g., 'pending' if new, or actual status if known
-    # Fields that will be calculated or set based on other fields or logic
-    # before saving to DB, not directly from request.
-    # For example, cost and remaining_amount might be set by the service layer.
-    # However, the DB model's __init__ already handles remaining_amount and cost
-    # if price and amount are available.
-    # For OrderCreate, we might not need to explicitly define them if they are
-    # derived from OrderBase fields.
+    exchange_order_id: Optional[str] = None
+    status: str = 'pending'
+
+    # Fields from exchange response or pre-calculated, needed for DB storage
+    timestamp: Optional[datetime] = None
+    filled_amount: Optional[float] = None
+    remaining_amount: Optional[float] = None
+    cost: Optional[float] = None
+    fee: Optional[float] = None
+    fee_currency: Optional[str] = None
+
+    @validator('timestamp', pre=True, always=True)
+    def default_timestamp(cls, v):
+        return v or datetime.now(timezone.utc)
 
 class OrderResponse(OrderBase):
     id: int
@@ -45,7 +50,7 @@ class OrderResponse(OrderBase):
     fee_currency: Optional[str] = None
 
     class Config:
-        orm_mode = True # Pydantic V1 way for ORM compatibility
+        from_attributes = True # Pydantic V2 way for ORM compatibility
         # from_attributes = True # Pydantic V2 way for ORM compatibility
         # Pydantic V2 is preferred, but sticking to orm_mode for broader compatibility for now
         # unless specified. Assuming Pydantic V1 for orm_mode. If V2 is used,

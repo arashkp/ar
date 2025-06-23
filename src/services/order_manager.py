@@ -89,18 +89,27 @@ async def place_order(order_data: OrderRequest, db: Session) -> Order:
         # Ensure timestamp is timezone-aware (UTC)
         order_timestamp = datetime.fromtimestamp(ccxt_order_response['timestamp'] / 1000, tz=timezone.utc) if ccxt_order_response.get('timestamp') else datetime.now(timezone.utc)
 
-        order_to_save = OrderCreate(
-            **order_data.model_dump(), # type, side, amount, price, user_id, is_spot, client_order_id
-            exchange_order_id=str(ccxt_order_response['id']),
-            symbol=ccxt_order_response.get('symbol', order_data.symbol), # Use exchange's symbol if available
-            timestamp=order_timestamp,
-            status=ccxt_order_response.get('status', 'open'), # 'open', 'filled', 'canceled', etc.
-            filled_amount=ccxt_order_response.get('filled', 0.0),
-            remaining_amount=ccxt_order_response.get('remaining', order_data.amount - ccxt_order_response.get('filled', 0.0)),
-            cost=ccxt_order_response.get('cost', 0.0), # cost = filled * average_price
-            fee=ccxt_order_response.get('fee', {}).get('cost'),
-            fee_currency=ccxt_order_response.get('fee', {}).get('currency'),
-        )
+        # Prepare data for OrderCreate to avoid duplicate keyword arguments
+        order_create_data = order_data.model_dump()
+        order_create_data.update({
+            'exchange_order_id': str(ccxt_order_response['id']),
+            'symbol': ccxt_order_response.get('symbol', order_data.symbol), # Override symbol from exchange if available
+            'timestamp': order_timestamp,
+            'status': ccxt_order_response.get('status', 'open'),
+            'filled_amount': ccxt_order_response.get('filled', 0.0),
+            'remaining_amount': ccxt_order_response.get('remaining', order_data.amount - ccxt_order_response.get('filled', 0.0)),
+            'cost': ccxt_order_response.get('cost', 0.0),
+            'fee': ccxt_order_response.get('fee', {}).get('cost'),
+            'fee_currency': ccxt_order_response.get('fee', {}).get('currency'),
+        })
+        # Fields from order_data like price, amount, side, type, user_id, is_spot are already in order_create_data
+        # We need to ensure that the fields expected by OrderCreate are correctly populated.
+        # OrderCreate schema: exchange_id, symbol, amount, side, type, price, user_id, is_spot, client_order_id
+        # + exchange_order_id, status
+        # The model_dump from OrderRequest (order_data) covers most base fields.
+        # The update adds/overrides fields from the exchange response.
+
+        order_to_save = OrderCreate(**order_create_data)
 
     except ccxt.InsufficientFunds as e:
         logger.error(f"Insufficient funds on {order_data.exchange_id} for order: {e}")
@@ -112,8 +121,13 @@ async def place_order(order_data: OrderRequest, db: Session) -> Order:
         logger.error(f"Exchange error on {order_data.exchange_id}: {e}")
         order_to_save = OrderCreate(**order_data.model_dump(), status='rejected_exchange_error')
     except Exception as e: # Catch-all for other ccxt issues or unexpected errors
-        logger.error(f"An unexpected error occurred while placing order on {order_data.exchange_id}: {e}")
-        order_to_save = OrderCreate(**order_data.model_dump(), status='rejected_unknown_error')
+        logger.error(f"An unexpected error occurred while placing order on {order_data.exchange_id}: {e}", exc_info=True) # Added exc_info
+        # Ensure order_to_save is defined for generic errors too
+        order_data_dump = order_data.model_dump()
+        # Remove fields not expected by OrderCreate if they are causing issues, though model_dump should be fine.
+        # Relevant fields for OrderCreate are: exchange_id, symbol, amount, side, type, price, etc.
+        # All should be in order_data.model_dump().
+        order_to_save = OrderCreate(**order_data_dump, status='rejected_unknown_error')
     finally:
         # Close the exchange connection if possible/needed (ccxt handles this automatically for REST)
         # For async, it's good practice if the exchange object has an explicit close method.
@@ -126,3 +140,27 @@ async def place_order(order_data: OrderRequest, db: Session) -> Order:
     logger.info(f"Order saved to DB with ID: {db_order.id} and status: {db_order.status}")
 
     return db_order
+
+async def list_orders(
+    db: Session,
+    exchange_id: str | None = None,
+    symbol: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0 # Renamed from skip to match common API parameter naming
+) -> list[Order]:
+    """
+    Retrieves a list of orders based on specified filters and pagination.
+    """
+    logger.info(f"Listing orders with filters: exchange_id={exchange_id}, symbol={symbol}, status={status}, limit={limit}, offset={offset}")
+    # Note: The CRUD function is synchronous, so we call it directly.
+    # If it were async, we would 'await' it.
+    orders = crud_orders.get_orders_with_filters(
+        db=db,
+        exchange_id=exchange_id,
+        symbol=symbol,
+        status=status,
+        skip=offset, # Pass offset as skip to the CRUD function
+        limit=limit
+    )
+    return orders
