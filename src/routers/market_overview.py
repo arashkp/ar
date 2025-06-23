@@ -429,8 +429,8 @@ async def get_market_overview():
                          df['ATR_14'] = np.nan
                 else:
                      logger.debug(f"[{symbol}] Dtypes after HLC numeric conversion:\n{df.dtypes}") # INFO to DEBUG
-                    MIN_ROWS_FOR_ATR = 20 
-                    if len(df) < MIN_ROWS_FOR_ATR:
+                     MIN_ROWS_FOR_ATR = 20
+                     if len(df) < MIN_ROWS_FOR_ATR:
                         logger.warning(f"[{symbol}] DataFrame has {len(df)} rows, < minimum ({MIN_ROWS_FOR_ATR}) for stable ATR. ATR_14 set to NaN.")
                         df['ATR_14'] = np.nan
                     else:
