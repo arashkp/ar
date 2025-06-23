@@ -399,7 +399,6 @@ async def get_market_overview():
                     continue  # To the next symbol in SYMBOL_CONFIG
 
                 # --- Existing Data Processing (uses 'df') ---
-# --- ATR Calculation and Related Logic (Merged) ---
                 logger.debug(f"[{symbol}] DataFrame shape before ATR: {df.shape}, initial dtypes:\n{df.dtypes}") # INFO to DEBUG
                 if not df.empty and len(df) > 5: 
                     logger.debug(f"[{symbol}] DataFrame head before ATR:\n{df.head()}") # INFO to DEBUG
