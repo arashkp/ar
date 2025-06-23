@@ -1,6 +1,14 @@
+import warnings
 from fastapi import FastAPI
 from src.routers import exchange, trades, market_overview, orders  # Added orders router
 from src.database.session import create_db_and_tables  # For DB initialization
+
+# Suppress the specific UserWarning from pandas_ta regarding pkg_resources
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.",
+)
 
 app = FastAPI()
 

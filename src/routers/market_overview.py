@@ -400,12 +400,12 @@ async def get_market_overview():
 
                 # --- Existing Data Processing (uses 'df') ---
 # --- ATR Calculation and Related Logic (Merged) ---
-                logger.info(f"[{symbol}] DataFrame shape before ATR: {df.shape}, initial dtypes:\n{df.dtypes}")
+                logger.debug(f"[{symbol}] DataFrame shape before ATR: {df.shape}, initial dtypes:\n{df.dtypes}") # INFO to DEBUG
                 if not df.empty and len(df) > 5: 
-                    logger.info(f"[{symbol}] DataFrame head before ATR:\n{df.head()}")
-                    logger.info(f"[{symbol}] DataFrame tail before ATR:\n{df.tail()}")
+                    logger.debug(f"[{symbol}] DataFrame head before ATR:\n{df.head()}") # INFO to DEBUG
+                    logger.debug(f"[{symbol}] DataFrame tail before ATR:\n{df.tail()}") # INFO to DEBUG
                 elif not df.empty: 
-                    logger.info(f"[{symbol}] DataFrame contents before ATR:\n{df}")
+                    logger.debug(f"[{symbol}] DataFrame contents before ATR:\n{df}") # INFO to DEBUG
 
                 hlc_columns_present = True
                 required_hlc_cols = ['high', 'low', 'close']
@@ -428,9 +428,9 @@ async def get_market_overview():
                     if 'ATR_14' not in df.columns:
                          df['ATR_14'] = np.nan
                 else:
-                    logger.info(f"[{symbol}] Dtypes after HLC numeric conversion:\n{df.dtypes}")
-                    MIN_ROWS_FOR_ATR = 20 
-                    if len(df) < MIN_ROWS_FOR_ATR:
+                     logger.debug(f"[{symbol}] Dtypes after HLC numeric conversion:\n{df.dtypes}") # INFO to DEBUG
+                     MIN_ROWS_FOR_ATR = 20
+                     if len(df) < MIN_ROWS_FOR_ATR:
                         logger.warning(f"[{symbol}] DataFrame has {len(df)} rows, < minimum ({MIN_ROWS_FOR_ATR}) for stable ATR. ATR_14 set to NaN.")
                         df['ATR_14'] = np.nan
                     else:
@@ -438,7 +438,7 @@ async def get_market_overview():
                             atr_series = df.ta.atr(length=14) 
                             if atr_series is not None and not atr_series.empty:
                                 df['ATR_14'] = atr_series
-                                logger.info(f"[{symbol}] Successfully calculated and assigned ATR_14 series.")
+                                logger.debug(f"[{symbol}] Successfully calculated and assigned ATR_14 series.") # INFO to DEBUG
                             else:
                                 logger.warning(f"[{symbol}] ATR calculation returned None or empty series. Assigning NaN to ATR_14 column.")
                                 df['ATR_14'] = np.nan 
