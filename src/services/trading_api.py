@@ -36,13 +36,13 @@ async def fetch_ohlcv(exchange_id: str, symbol: str, timeframe: str = '1h', limi
     exchange = await initialize_exchange(exchange_id, api_key, api_secret)
     try:
         if not exchange.has['fetchOHLCV']:
-            await exchange.close()
+            # No await exchange.close() here, finally block will handle it
             raise HTTPException(status_code=501, detail=f"Exchange {exchange_id} does not support fetching OHLCV data.")
 
         # Check if symbol is available
         markets = await exchange.load_markets()
         if symbol not in markets:
-            await exchange.close()
+            # No await exchange.close() here, finally block will handle it
             raise HTTPException(status_code=400, detail=f"Symbol {symbol} not available on {exchange_id}.")
 
         ohlcv = await exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
@@ -55,8 +55,10 @@ async def fetch_ohlcv(exchange_id: str, symbol: str, timeframe: str = '1h', limi
         raise HTTPException(status_code=502, detail=f"Network error fetching OHLCV from {exchange_id}: {str(e)}")
     except ccxt.ExchangeError as e: # Catch other exchange-specific errors
         raise HTTPException(status_code=500, detail=f"Error fetching OHLCV from {exchange_id}: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching OHLCV from {exchange_id}: {str(e)}")
+    except HTTPException: # Add this to re-raise HTTPExceptions directly
+        raise
+    except Exception as e: # Now this catches other non-HTTP, non-CCXT exceptions
+        raise HTTPException(status_code=500, detail=f"An truly unexpected error occurred while fetching OHLCV from {exchange_id}: {str(e)}")
     finally:
         if exchange:
             await exchange.close()
@@ -69,7 +71,7 @@ async def fetch_balance(exchange_id: str, api_key: str, api_secret: str):
     exchange = await initialize_exchange(exchange_id, api_key, api_secret)
     try:
         if not exchange.has['fetchBalance']:
-            await exchange.close()
+            # No await exchange.close() here, finally block will handle it
             raise HTTPException(status_code=501, detail=f"Exchange {exchange_id} does not support fetching balance or requires specific permissions.")
 
         balance = await exchange.fetch_balance()
@@ -82,8 +84,10 @@ async def fetch_balance(exchange_id: str, api_key: str, api_secret: str):
         raise HTTPException(status_code=502, detail=f"Network error fetching balance from {exchange_id}: {str(e)}")
     except ccxt.ExchangeError as e: # Catch other exchange-specific errors
         raise HTTPException(status_code=500, detail=f"Error fetching balance from {exchange_id}: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching balance from {exchange_id}: {str(e)}")
+    except HTTPException: # Add this to re-raise HTTPExceptions directly
+        raise
+    except Exception as e: # Now this catches other non-HTTP, non-CCXT exceptions
+        raise HTTPException(status_code=500, detail=f"An truly unexpected error occurred while fetching balance from {exchange_id}: {str(e)}")
     finally:
         if exchange:
             await exchange.close()

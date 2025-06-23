@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+from fastapi.testclient import TestClient # Moved import to top
 from src.database.base import Base # Assuming your SQLAlchemy Base is here
 from src.main import app # Your FastAPI app
 from src.database.session import get_db # The dependency to override
