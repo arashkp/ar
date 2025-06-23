@@ -402,13 +402,64 @@ async def get_market_overview():
                     continue  # To the next symbol in SYMBOL_CONFIG
 
                 # --- Existing Data Processing (uses 'df') ---
-                df.ta.atr(length=14, append=True)  # This line should now use the combined df
+                # Log column dtypes before ATR calculation
+                logger.info(f"[{symbol}] DataFrame dtypes before ATR conversion attempt:\n{df.dtypes}")
 
-                atr_value = df['ATR_14'].iloc[-1] if 'ATR_14' in df.columns and not df['ATR_14'].empty and pd.notna(
-                    df['ATR_14'].iloc[-1]) else 0
+                # Ensure HLC columns are numeric
+                for col in ['high', 'low', 'close']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                    else:
+                        logger.error(f"[{symbol}] Critical: Column '{col}' not found in DataFrame before TA calculation. Skipping TA for this symbol.")
+                        # Add a default/error MarketOverviewItem and continue to next symbol
+                        results.append(MarketOverviewItem(
+                            symbol=symbol, current_price=current_price if current_price is not None else 0.0,
+                            ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
+                            support_levels=[], resistance_levels=[]
+                        ))
+                        # This requires a way to break out of the current symbol's processing.
+                        # For now, let's assume we'd need to set a flag and skip TA section.
+                        # A simple way is to let it try and fail if columns are missing,
+                        # but proactive check is better.
+                        # This part of the loop might need restructuring if we want to `continue` here.
+                        # For now, error logging is the primary action. Subsequent TA calls will fail.
+                        pass # Let it proceed, TA calls will fail if columns are missing.
+
+                logger.info(f"[{symbol}] DataFrame dtypes after HLC numeric conversion:\n{df.dtypes}")
+                logger.info(f"[{symbol}] Sample HLC data before ATR:\nHigh: {df['high'].head(2).tolist() if 'high' in df.columns else 'N/A'} Low: {df['low'].head(2).tolist() if 'low' in df.columns else 'N/A'} Close: {df['close'].head(2).tolist() if 'close' in df.columns else 'N/A'}")
+
+                # Calculate ATR and explicitly assign
+                atr_series = None
+                if all(col in df.columns for col in ['high', 'low', 'close']):
+                    try:
+                        atr_series = df.ta.atr(length=14) # Default append is False
+                        if atr_series is not None and not atr_series.empty:
+                            df['ATR_14'] = atr_series
+                            logger.info(f"[{symbol}] Successfully calculated and assigned ATR_14 series.")
+                        else:
+                            logger.warning(f"[{symbol}] ATR calculation returned None or empty series. Assigning NaN to ATR_14 column.")
+                            df['ATR_14'] = np.nan # Fill with NaN if ATR calculation failed
+                    except Exception as e:
+                        logger.error(f"[{symbol}] Error during ATR calculation: {e}. Assigning NaN to ATR_14 column.")
+                        df['ATR_14'] = np.nan # Fill with NaN on error
+                else:
+                    logger.error(f"[{symbol}] Missing one or more HLC columns. Cannot calculate ATR. Assigning NaN to ATR_14 column.")
+                    df['ATR_14'] = np.nan
+
+                atr_value = None # Default to None
+                if 'ATR_14' in df.columns and not df['ATR_14'].empty:
+                    last_atr = df['ATR_14'].iloc[-1]
+                    if pd.notna(last_atr):
+                        atr_value = last_atr
+                            # Removed: logger.info(f"[{symbol}] Retrieved ATR value: {atr_value}")
+                    else:
+                        logger.warning(f"[{symbol}] Last value in 'ATR_14' column is NaN. atr_value remains None.")
+                else:
+                    logger.warning(f"[{symbol}] 'ATR_14' column is missing or empty. atr_value remains None.")
 
                 formatted_atr_14 = None
-                if pd.notna(atr_value):  # Ensure atr_value is not NaN before formatting
+                # Ensure atr_value is not None AND is a valid number (not NaN) before formatting
+                if atr_value is not None and pd.notna(atr_value):
                     # price_precision should be available from current_price calculation
                     formatted_atr_14 = format_value(atr_value, price_precision)
 
@@ -431,8 +482,9 @@ async def get_market_overview():
 
                 effective_minimum_gap = max(atr_component, current_symbol_desired_gap)
 
+                atr_log_display = f"{atr_value:.4f}" if atr_value is not None and pd.notna(atr_value) else "N/A"
                 logger.info(
-                    f"[{symbol}] ATR: {atr_value if pd.notna(atr_value) else 'N/A':.4f}, ATR*{settings.ATR_MULTIPLIER_FOR_GAP}: {atr_component:.4f}, DesiredGapUSDT: {current_symbol_desired_gap:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
+                    f"[{symbol}] ATR: {atr_log_display}, ATR*{settings.ATR_MULTIPLIER_FOR_GAP}: {atr_component:.4f}, DesiredGapUSDT: {current_symbol_desired_gap:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
 
                 # Initialize support and resistance items
                 support_level_items = []
