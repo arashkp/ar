@@ -113,3 +113,40 @@ async def place_new_order(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {str(e)}"
         )
+
+@router.get("/", response_model=list[OrderResponse])
+async def list_orders_api(
+    exchange_id: str | None = None,
+    symbol: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve a list of orders based on optional filters and pagination.
+    - **exchange_id**: Filter by exchange ID (e.g., 'binance').
+    - **symbol**: Filter by trading symbol (e.g., 'BTC/USDT').
+    - **status**: Filter by order status (e.g., 'open', 'filled', 'cancelled').
+    - **limit**: Maximum number of orders to return.
+    - **offset**: Number of orders to skip for pagination.
+    """
+    try:
+        orders_list = await order_manager.list_orders(
+            db=db,
+            exchange_id=exchange_id,
+            symbol=symbol,
+            status=status,
+            limit=limit,
+            offset=offset
+        )
+        # FastAPI will automatically convert the list of Order SQLAlchemy models
+        # to a list of OrderResponse Pydantic models.
+        return orders_list
+    except Exception as e:
+        # Consider more specific error handling if needed, e.g., for validation errors
+        # logger.error(f"Error listing orders: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while listing orders: {str(e)}"
+        )

@@ -3,7 +3,8 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 
-import ccxt
+import ccxt # Keep this for the ccxt.X exceptions in the service code if not fully mocked
+import ccxt as actual_ccxt # Import the real ccxt module for its exception classes
 from src.schemas.order_schema import OrderRequest, OrderCreate
 from src.services.order_manager import place_order
 from src.database.models import Order
@@ -86,9 +87,12 @@ async def test_place_order_success(mock_ccxt, mock_crud_create_order, mock_os_ge
 
     # Check that crud_orders.create_order was called with an OrderCreate object
     # that has the correct attributes derived from the ccxt response
-    call_args = mock_crud_create_order.call_args[0] # Get positional arguments
-    assert len(call_args) == 2 # db, order
-    order_create_arg = call_args[1]
+    # crud_orders.create_order is called with keyword arguments: create_order(db=db, order=order_to_save)
+    assert mock_crud_create_order.call_count == 1
+    called_kwargs = mock_crud_create_order.call_args.kwargs
+    assert 'db' in called_kwargs
+    assert 'order' in called_kwargs
+    order_create_arg = called_kwargs['order']
     assert isinstance(order_create_arg, OrderCreate)
     assert order_create_arg.exchange_order_id == 'exchange_order_123'
     assert order_create_arg.status == 'open'
@@ -129,16 +133,27 @@ async def test_place_order_insufficient_funds(mock_ccxt, mock_crud_create_order,
     # cost and remaining_amount are calculated by Order model's __init__
     # For OrderCreate, they are not explicitly set unless they are part of the schema.
     # Our OrderCreate does not have them, so Order model's defaults/calculations apply.
-    mock_db_order_rejected = Order(id=2, **rejected_order_create_data, price=sample_order_request.price, amount=sample_order_request.amount)
+    # Fields like price and amount are already in rejected_order_create_data.
+    mock_db_order_rejected = Order(id=2, **rejected_order_create_data)
 
     mock_crud_create_order.return_value = mock_db_order_rejected
+
+    # Configure mock_ccxt to use actual exception classes from ccxt
+    # This ensures that `isinstance(e, ccxt.InsufficientFunds)` works as expected in the service code.
+    mock_ccxt.InsufficientFunds = actual_ccxt.InsufficientFunds
+    mock_ccxt.NetworkError = actual_ccxt.NetworkError
+    mock_ccxt.ExchangeError = actual_ccxt.ExchangeError
 
     result_order = await place_order(order_data=sample_order_request, db=mock_db_session)
 
     mock_exchange_instance.create_order.assert_called_once()
 
-    call_args = mock_crud_create_order.call_args[0]
-    order_create_arg = call_args[1]
+    # Check call to crud_orders.create_order
+    assert mock_crud_create_order.call_count == 1
+    called_kwargs = mock_crud_create_order.call_args.kwargs
+    assert 'db' in called_kwargs
+    assert 'order' in called_kwargs
+    order_create_arg = called_kwargs['order']
     assert isinstance(order_create_arg, OrderCreate)
     assert order_create_arg.status == 'rejected_insufficient_funds'
 
@@ -157,13 +172,17 @@ async def test_place_order_no_api_keys(mock_crud_create_order, mock_os_getenv, s
         'exchange_order_id': None,
         # cost and remaining_amount will be calculated by Order model's __init__
     })
-    mock_db_order_no_keys = Order(id=3, **rejected_order_data, price=sample_order_request.price, amount=sample_order_request.amount)
+    # Fields like price and amount are already in rejected_order_data.
+    mock_db_order_no_keys = Order(id=3, **rejected_order_data)
     mock_crud_create_order.return_value = mock_db_order_no_keys
 
     result_order = await place_order(order_data=sample_order_request, db=mock_db_session)
 
-    call_args = mock_crud_create_order.call_args[0]
-    order_create_arg = call_args[1]
+    assert mock_crud_create_order.call_count == 1
+    called_kwargs = mock_crud_create_order.call_args.kwargs
+    assert 'db' in called_kwargs
+    assert 'order' in called_kwargs
+    order_create_arg = called_kwargs['order']
     assert isinstance(order_create_arg, OrderCreate)
     assert order_create_arg.status == 'rejected'
 
@@ -178,42 +197,40 @@ async def test_place_order_no_api_keys(mock_crud_create_order, mock_os_getenv, s
 # Test for invalid exchange ID
 @patch('src.services.order_manager.os.getenv')
 @patch('src.services.order_manager.crud_orders.create_order')
-@patch('src.services.order_manager.ccxt') # To control how getattr(ccxt, exchange_id) behaves
-async def test_place_order_invalid_exchange_id(mock_ccxt, mock_crud_create_order, mock_os_getenv, sample_order_request, mock_db_session):
+@patch('src.services.order_manager.ccxt', spec=actual_ccxt) # Use spec for mock_ccxt
+async def test_place_order_invalid_exchange_id(
+    mock_ccxt, mock_crud_create_order, mock_os_getenv, sample_order_request, mock_db_session
+):
     mock_os_getenv.side_effect = lambda key: "dummy_key" # API keys are found
 
-    # Simulate ccxt not having the exchange_id attribute
-    # Note: sample_order_request.exchange_id is 'binance'
-    # To simulate it being invalid, we make getattr(mock_ccxt, 'binance') raise AttributeError
-    mock_ccxt.configure_mock(**{sample_order_request.exchange_id: None}) # Remove attribute
-    # A more direct way to simulate getattr raising AttributeError:
-    # mock_ccxt.getattr.side_effect = AttributeError
-    # However, ccxt itself is a module, so we mock the dynamic access:
-    # We need to make sure that when `getattr(ccxt, sample_order_request.exchange_id)` is called, it fails.
-    # If `sample_order_request.exchange_id` is 'binance', then `mock_ccxt.binance` would be accessed.
-    # If `mock_ccxt.binance` itself is a MagicMock, accessing an attribute on it by default returns another MagicMock.
-    # To make it act like the attribute doesn't exist on the ccxt module:
-    delattr(mock_ccxt, sample_order_request.exchange_id) # This might not work as expected if mock_ccxt is already a MagicMock
-                                                        # and sample_order_request.exchange_id is one of its children.
-                                                        # A better way for MagicMock:
-    # mock_ccxt.attach_mock(MagicMock(side_effect=AttributeError), sample_order_request.exchange_id)
-    # For this test, let's make the __getattr__ of mock_ccxt raise an error for the specific exchange
-    def mock_getattr(name):
-        if name == sample_order_request.exchange_id:
-            raise AttributeError(f"Exchange '{name}' not found in ccxt")
-        return MagicMock() # Default behavior for other attributes
-    mock_ccxt.__getattr__ = mock_getattr
+    # Modify the exchange_id in a copy of the request for this specific test case
+    # to ensure it's an ID that spec'd mock_ccxt won't have.
+    test_order_request = sample_order_request.model_copy(deep=True)
+    test_order_request.exchange_id = "invalidexchangenamefortest"
 
+    # Because mock_ccxt is spec'd with actual_ccxt, trying to getattr(mock_ccxt, "invalidexchangenamefortest")
+    # will raise an AttributeError, which is caught by the service.
 
-    rejected_order_data = sample_order_request.model_dump()
+    # We might need to ensure that any valid exchanges (like 'binance' if used by other parts of code indirectly)
+    # are still available on mock_ccxt if the spec is too strict or if ccxt loads them dynamically.
+    # However, for this specific path, the AttributeError should occur first.
+    # If 'binance' (original sample_order_request.exchange_id) was needed for other mocks,
+    # it should be explicitly set up on mock_ccxt if spec removes it.
+    # For this test, we assume 'invalidexchangenamefortest' is what we're testing the failure for.
+
+    rejected_order_data = test_order_request.model_dump() # Use the modified request
     rejected_order_data.update({'status': 'rejected', 'exchange_order_id': None})
-    mock_db_order_rejected = Order(id=4, **rejected_order_data, price=sample_order_request.price, amount=sample_order_request.amount)
+    mock_db_order_rejected = Order(id=4, **rejected_order_data)
     mock_crud_create_order.return_value = mock_db_order_rejected
 
-    result_order = await place_order(order_data=sample_order_request, db=mock_db_session)
+    result_order = await place_order(order_data=test_order_request, db=mock_db_session) # Use test_order_request
 
-    call_args = mock_crud_create_order.call_args[0]
-    order_create_arg = call_args[1]
+    # Check call to crud_orders.create_order
+    assert mock_crud_create_order.call_count == 1
+    called_kwargs = mock_crud_create_order.call_args.kwargs
+    assert 'db' in called_kwargs
+    assert 'order' in called_kwargs
+    order_create_arg = called_kwargs['order']
     assert isinstance(order_create_arg, OrderCreate)
     assert order_create_arg.status == 'rejected'
 
@@ -236,8 +253,14 @@ async def test_place_order_invalid_exchange_id(mock_ccxt, mock_crud_create_order
 async def test_place_order_network_error(mock_ccxt, mock_crud_create_order, mock_os_getenv, sample_order_request, mock_db_session):
     mock_os_getenv.side_effect = lambda key: "dummy_key"
 
+    # Ensure mock_ccxt uses real ccxt exceptions
+    mock_ccxt.InsufficientFunds = actual_ccxt.InsufficientFunds
+    mock_ccxt.NetworkError = actual_ccxt.NetworkError
+    mock_ccxt.ExchangeError = actual_ccxt.ExchangeError
+
     mock_exchange_instance = AsyncMock()
-    mock_exchange_instance.create_order.side_effect = ccxt.NetworkError("Connection failed")
+    # Use the actual_ccxt for raising the error in the test's side_effect
+    mock_exchange_instance.create_order.side_effect = actual_ccxt.NetworkError("Connection failed")
     mock_exchange_instance.close = AsyncMock()
 
     mock_exchange_class = MagicMock(return_value=mock_exchange_instance)
@@ -245,13 +268,86 @@ async def test_place_order_network_error(mock_ccxt, mock_crud_create_order, mock
 
     rejected_order_data = sample_order_request.model_dump()
     rejected_order_data.update({'status': 'rejected_network_error', 'exchange_order_id': None})
-    mock_db_order_rejected = Order(id=5, **rejected_order_data, price=sample_order_request.price, amount=sample_order_request.amount)
+    # Fields like price and amount are already in rejected_order_data.
+    mock_db_order_rejected = Order(id=5, **rejected_order_data)
     mock_crud_create_order.return_value = mock_db_order_rejected
 
     result_order = await place_order(order_data=sample_order_request, db=mock_db_session)
 
-    call_args = mock_crud_create_order.call_args[0]
-    order_create_arg = call_args[1]
+    assert mock_crud_create_order.call_count == 1
+    called_kwargs = mock_crud_create_order.call_args.kwargs
+    assert 'db' in called_kwargs
+    assert 'order' in called_kwargs
+    order_create_arg = called_kwargs['order']
     assert isinstance(order_create_arg, OrderCreate)
     assert order_create_arg.status == 'rejected_network_error'
     assert result_order.status == 'rejected_network_error'
+
+
+# Test for list_orders service function
+@patch('src.services.order_manager.crud_orders.get_orders_with_filters')
+async def test_list_orders(mock_get_orders_with_filters, mock_db_session):
+    # Import list_orders here to avoid issues with module-level patches if not careful
+    from src.services.order_manager import list_orders
+
+    # Sample filter parameters
+    exchange_id = "binance"
+    symbol = "BTC/USDT"
+    status = "filled"
+    limit = 50
+    offset = 0
+
+    # Mocked return value from the CRUD function
+    mock_order_1 = Order(id=1, exchange_id=exchange_id, symbol=symbol, status=status, price=30000, amount=1)
+    mock_order_2 = Order(id=2, exchange_id=exchange_id, symbol=symbol, status=status, price=31000, amount=0.5)
+    mocked_orders_list = [mock_order_1, mock_order_2]
+
+    mock_get_orders_with_filters.return_value = mocked_orders_list
+
+    # Call the service function
+    result = await list_orders(
+        db=mock_db_session,
+        exchange_id=exchange_id,
+        symbol=symbol,
+        status=status,
+        limit=limit,
+        offset=offset
+    )
+
+    # Assert that the CRUD function was called with the correct parameters
+    mock_get_orders_with_filters.assert_called_once_with(
+        db=mock_db_session,
+        exchange_id=exchange_id,
+        symbol=symbol,
+        status=status,
+        skip=offset, # Ensure 'offset' is correctly passed as 'skip'
+        limit=limit
+    )
+
+    # Assert that the service function returned the expected result
+    assert result == mocked_orders_list
+    assert len(result) == 2
+    assert result[0].id == 1
+    assert result[1].symbol == symbol
+
+@patch('src.services.order_manager.crud_orders.get_orders_with_filters')
+async def test_list_orders_no_filters(mock_get_orders_with_filters, mock_db_session):
+    from src.services.order_manager import list_orders
+    # Test with no optional filters
+    limit = 100
+    offset = 0
+
+    mocked_orders_list = [Order(id=i, price=100*i, amount=i) for i in range(3)] # Dummy orders
+    mock_get_orders_with_filters.return_value = mocked_orders_list
+
+    result = await list_orders(db=mock_db_session, limit=limit, offset=offset)
+
+    mock_get_orders_with_filters.assert_called_once_with(
+        db=mock_db_session,
+        exchange_id=None, # Expect None for optional params not provided
+        symbol=None,
+        status=None,
+        skip=offset,
+        limit=limit
+    )
+    assert result == mocked_orders_list
