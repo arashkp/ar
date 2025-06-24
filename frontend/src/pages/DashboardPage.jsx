@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getMarketOverview } from '../api/market';
-import SymbolOverview from '../components/SymbolOverview';
-import OrderEntryForm from '../components/OrderEntryForm'; // Import OrderEntryForm
+import SymbolOverview from '../components/SymbolOverview.jsx';
+import OrderEntryForm from '../components/OrderEntryForm.jsx'; // Import OrderEntryForm
 
 const DashboardPage = () => {
   const [data, setData] = useState(null);
