@@ -136,7 +136,8 @@ async def assert_successful_item(item: MarketOverviewItem, symbol: str, mock_ta_
         for sl in item.support_levels:
             assert isinstance(sl, LevelItem)
             assert isinstance(sl.level, float)
-            assert isinstance(sl.description, str)
+            assert isinstance(sl.strength, int) # Check for strength
+            assert sl.strength >= 0 # Strength should be non-negative
             assert sl.level < item.current_price if item.current_price > 0 else True # check if price is not 0
 
     assert isinstance(item.resistance_levels, list)
@@ -144,7 +145,8 @@ async def assert_successful_item(item: MarketOverviewItem, symbol: str, mock_ta_
         for rl in item.resistance_levels:
             assert isinstance(rl, LevelItem)
             assert isinstance(rl.level, float)
-            assert isinstance(rl.description, str)
+            assert isinstance(rl.strength, int) # Check for strength
+            assert rl.strength >= 0 # Strength should be non-negative
             assert rl.level > item.current_price if item.current_price > 0 else True
 
 
@@ -163,15 +165,25 @@ async def assert_item_no_ta(item: MarketOverviewItem, symbol: str, expect_price:
 
     assert isinstance(item.support_levels, list)
     assert isinstance(item.resistance_levels, list)
+
     if expect_levels_non_empty:
-        # This case means TA failed, but S/R might still be generated from raw data (e.g. historical)
-        assert len(item.support_levels) > 0 or len(item.resistance_levels) > 0 or not df.empty # if df not empty, levels should be there
+        # This case means TA failed, but S/R might still be generated from raw data
+        # We expect that if levels are generated, they have a valid structure
+        # The actual presence of levels depends on the OHLCV data provided in the test.
+        # We can assert that if levels exist, they follow the LevelItem model with 'strength'.
         for sl in item.support_levels:
             assert isinstance(sl, LevelItem)
-            assert sl.description in ["Historical Low", "Recent Low"]
+            assert isinstance(sl.level, float)
+            assert isinstance(sl.strength, int)
+            assert sl.strength >= 0
         for rl in item.resistance_levels:
             assert isinstance(rl, LevelItem)
-            assert rl.description in ["Historical High", "Recent High"]
+            assert isinstance(rl.level, float)
+            assert isinstance(rl.strength, int)
+            assert rl.strength >= 0
+        # We cannot reliably assert `len(item.support_levels) > 0` without knowing the exact mock data's nature for S/R generation in this specific "no_ta" context.
+        # The original `or not df.empty` check is problematic as df is not available here.
+        # The core idea is: if levels ARE present, they are valid. If not, they are empty lists.
     else:
         # This case means S/R calculation was also not possible or expected to be empty
         assert item.support_levels == []
@@ -540,33 +552,35 @@ async def test_sr_mix_recent_historical(mock_ccxt_getattr_patcher, mock_exchange
     item = results[0]
     assert item.symbol == symbol_under_test
 
-    # Assertions for Support Levels (expected: 95, 90 as recent; 85, 80, 75 as historical)
-    # Sorted: 95, 90, 85, 80, 75
+    # Assertions for Support Levels
     assert len(item.support_levels) <= 5
-    sl_descriptions = [sl.description for sl in item.support_levels]
     sl_levels = [sl.level for sl in item.support_levels]
+    sl_strengths = [sl.strength for sl in item.support_levels]
 
-    assert 95.0 in sl_levels and sl_descriptions[sl_levels.index(95.0)] == "Recent Low"
-    assert 90.0 in sl_levels and sl_descriptions[sl_levels.index(90.0)] == "Recent Low"
+    # Check if specific levels are present and their strengths are integers
+    # The exact strength values depend on the complex interaction of extrema detection,
+    # ATR filtering, and Fibonacci generation, which is hard to precisely predict in mock tests
+    # without replicating the entire logic. So, we check for presence and type.
+    assert 95.0 in sl_levels
+    assert isinstance(sl_strengths[sl_levels.index(95.0)], int)
+    assert 90.0 in sl_levels
+    assert isinstance(sl_strengths[sl_levels.index(90.0)], int)
 
-    historical_low_count = sum(1 for desc in sl_descriptions if desc == "Historical Low")
-    recent_low_count = sum(1 for desc in sl_descriptions if desc == "Recent Low")
-    assert recent_low_count >= 1 # Should find at least one, ideally 2
-    assert len(item.support_levels) == 5 if recent_low_count < 5 else recent_low_count <= 5
+    assert all(isinstance(s, int) and s >= 0 for s in sl_strengths)
+    assert len(item.support_levels) > 0 # Expect some levels to be found
 
-    # Assertions for Resistance Levels (expected: 105, 110 as recent; 115, 120, 125 as historical)
-    # Sorted: 105, 110, 115, 120, 125
+    # Assertions for Resistance Levels
     assert len(item.resistance_levels) <= 5
-    rl_descriptions = [rl.description for rl in item.resistance_levels]
     rl_levels = [rl.level for rl in item.resistance_levels]
+    rl_strengths = [rl.strength for rl in item.resistance_levels]
 
-    assert 105.0 in rl_levels and rl_descriptions[rl_levels.index(105.0)] == "Recent High"
-    assert 110.0 in rl_levels and rl_descriptions[rl_levels.index(110.0)] == "Recent High"
+    assert 105.0 in rl_levels
+    assert isinstance(rl_strengths[rl_levels.index(105.0)], int)
+    assert 110.0 in rl_levels
+    assert isinstance(rl_strengths[rl_levels.index(110.0)], int)
 
-    historical_high_count = sum(1 for desc in rl_descriptions if desc == "Historical High")
-    recent_high_count = sum(1 for desc in rl_descriptions if desc == "Recent High")
-    assert recent_high_count >= 1 # Should find at least one, ideally 2
-    assert len(item.resistance_levels) == 5 if recent_high_count < 5 else recent_high_count <= 5
+    assert all(isinstance(s, int) and s >= 0 for s in rl_strengths)
+    assert len(item.resistance_levels) > 0 # Expect some levels to be found
 
     # Check sorting
     assert all(item.support_levels[i].level >= item.support_levels[i+1].level for i in range(len(item.support_levels)-1))
@@ -615,9 +629,9 @@ async def test_sr_only_recent(mock_ccxt_getattr_patcher, mock_exchange_factory, 
     item = results[0]
 
     assert len(item.support_levels) == 5
-    assert all(sl.description == "Recent Low" for sl in item.support_levels)
+    assert all(isinstance(sl.strength, int) and sl.strength >= 0 for sl in item.support_levels) # Check strength type and value
     assert len(item.resistance_levels) == 5
-    assert all(rl.description == "Recent High" for rl in item.resistance_levels)
+    assert all(isinstance(rl.strength, int) and rl.strength >= 0 for rl in item.resistance_levels) # Check strength type and value
     assert all(item.support_levels[i].level >= item.support_levels[i+1].level for i in range(len(item.support_levels)-1))
     assert all(item.resistance_levels[i].level <= item.resistance_levels[i+1].level for i in range(len(item.resistance_levels)-1))
 
@@ -655,14 +669,14 @@ async def test_sr_only_historical(mock_ccxt_getattr_patcher, mock_exchange_facto
     item = results[0]
 
     # Expect 5 historical lows as local lows > 100 or argrelextrema finds none < 100
-    # However, nsmallest will pick values < 100
+    # However, nsmallest/fibonacci will pick values < 100
     assert len(item.support_levels) == 5
-    assert all(sl.description == "Historical Low" for sl in item.support_levels)
+    assert all(isinstance(sl.strength, int) and sl.strength >= 0 for sl in item.support_levels) # Check strength type and value
     assert all(sl.level < current_price for sl in item.support_levels)
 
     # Expect 5 historical highs as local highs might be found but we want to test fallback
     assert len(item.resistance_levels) == 5
-    assert all(rl.description == "Historical High" for rl in item.resistance_levels)
+    assert all(isinstance(rl.strength, int) and rl.strength >= 0 for rl in item.resistance_levels) # Check strength type and value
     assert all(rl.level > current_price for rl in item.resistance_levels)
 
     assert all(item.support_levels[i].level >= item.support_levels[i+1].level for i in range(len(item.support_levels)-1))

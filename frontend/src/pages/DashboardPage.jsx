@@ -16,18 +16,23 @@ const DashboardPage = () => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const result = await getMarketOverview();
-        if (result && result.symbols && Array.isArray(result.symbols)) {
-          setData(result);
+        const result = await getMarketOverview(); // result is expected to be an array
+        if (result && Array.isArray(result)) {
+          setData(result); // Store the array directly
           // Set an initial selected symbol (e.g., the first one from the list)
-          if (result.symbols.length > 0 && result.symbols[0].symbol) {
-            setSelectedSymbol(result.symbols[0].symbol);
+          if (result.length > 0 && result[0].symbol) {
+            setSelectedSymbol(result[0].symbol);
           }
         } else {
+          // This 'else' block will now catch cases where 'result' is null, undefined, or not an array.
+          // The error message from api/market.js (if the fetch itself failed) would likely be caught by the catch block.
+          // This specifically handles if getMarketOverview resolves but with invalid data.
           setError('Failed to fetch market overview data or data format is incorrect.');
         }
       } catch (err) {
-        setError(err.message || 'An unexpected error occurred.');
+        // This will catch errors from getMarketOverview (e.g., network errors)
+        // or errors during the processing within the try block.
+        setError(err.message || 'An unexpected error occurred while fetching data.');
       } finally {
         setIsLoading(false);
       }
@@ -39,9 +44,6 @@ const DashboardPage = () => {
   // Handler for when a price is clicked in SymbolOverview
   const handlePriceClick = (price, symbol) => {
     setClickedPrice(price);
-    // Optionally, update selectedSymbol if the click is associated with a specific symbol
-    // For now, SymbolOverview doesn't pass its symbol on click, but it could be enhanced.
-    // If SymbolOverview were to pass its symbol: setSelectedSymbol(symbol);
     // Updated: The symbol is now passed from the map function
     if (symbol) {
       setSelectedSymbol(symbol);
@@ -65,7 +67,8 @@ const DashboardPage = () => {
     return <div className="text-center py-10 text-xl font-semibold text-red-500 dark:text-red-400">Error: {error}</div>;
   }
 
-  if (!data || !data.symbols || !Array.isArray(data.symbols) || data.symbols.length === 0) {
+  // Adjust the check for 'data' to expect an array directly
+  if (!data || !Array.isArray(data) || data.length === 0) {
     return <div className="text-center py-10 text-xl font-semibold text-gray-500 dark:text-gray-400">No market data available.</div>;
   }
 
@@ -80,10 +83,8 @@ const DashboardPage = () => {
         <div className="lg:w-3/4">
           <h2 className="text-2xl font-semibold mb-6 text-gray-700 dark:text-gray-200">Market Overview</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
-            {data.symbols.map((symbolData) => (
-              // Enhance SymbolOverview to pass its own symbol on click if needed for context
-              // For now, handlePriceClick might not know which symbol's price was clicked unless SymbolOverview is modified
-              // Or, we can pass a partially applied function: onPriceClick={(price) => handlePriceClick(price, symbolData.symbol)}
+            {/* 'data' is now the array, so we map over it directly */}
+            {data.map((symbolData) => (
               <div key={symbolData.symbol_id || symbolData.symbol} onClick={() => handleSymbolSelect(symbolData.symbol)}>
                 <SymbolOverview
                   symbolData={symbolData}
