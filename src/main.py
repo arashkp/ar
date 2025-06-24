@@ -1,5 +1,6 @@
 import warnings
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from src.routers import exchange, trades, market_overview, orders, investment # Added investment router
 from src.database.session import create_db_and_tables  # For DB initialization
 
@@ -12,6 +13,14 @@ warnings.filterwarnings(
 
 app = FastAPI()
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 @app.on_event("startup")
 def on_startup():
