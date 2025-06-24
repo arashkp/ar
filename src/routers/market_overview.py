@@ -1,17 +1,17 @@
 from fastapi import APIRouter, HTTPException
 import logging
-from typing import List
-import decimal  # Added import
+from typing import List, Optional
+import decimal
 import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema
 import pandas_ta as ta
 import ccxt.async_support as ccxt
 from pydantic import BaseModel
-import os  # If not already imported
+import os
 from src.services.cache_manager import read_ohlcv_from_cache, \
-    write_ohlcv_to_cache  # Assuming cache_manager is in src.services
-from src.core.config import settings  # Import settings
+    write_ohlcv_to_cache
+from src.core.config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,16 +34,13 @@ def format_value(value: float | None, precision: int) -> float | None:
         decimal.Decimal(str(value)).quantize(decimal.Decimal('1e-' + str(precision)), rounding=decimal.ROUND_HALF_UP))
 
 
-# import pandas as pd # Ensure pandas is imported if not already at the top for pd.notna
-# decimal should already be imported
-
 def generate_fibonacci_levels(
         swing_low_price: float,
         swing_high_price: float,
         current_price: float,
         is_support: bool,
         num_needed: int,
-        existing_levels_raw: list[float],
+        existing_levels_raw: list[float],  # These are the levels already selected by extrema logic (raw values)
         effective_min_gap: float,
         atr_value: float,
         price_precision: int,
@@ -72,8 +69,8 @@ def generate_fibonacci_levels(
 
     fib_levels_config = {
         'retracement': [0.236, 0.382, 0.5, 0.618, 0.786],
-        'extension_above': [1.272, 1.618, 2.0, 2.618],  # Added more extension levels
-        'extension_below': [-0.272, -0.618]  # For extensions below swing_low if current price is already below
+        'extension_above': [1.272, 1.618, 2.0, 2.618],
+        'extension_below': [-0.272, -0.618]
     }
 
     price_diff = swing_high_price - swing_low_price
@@ -81,146 +78,109 @@ def generate_fibonacci_levels(
 
     # Retracements
     for ratio in fib_levels_config['retracement']:
-        potential_fib_levels.append(swing_high_price - price_diff * ratio)  # From high for support
-        potential_fib_levels.append(swing_low_price + price_diff * ratio)  # From low for resistance
+        potential_fib_levels.append(swing_high_price - price_diff * ratio)
+        potential_fib_levels.append(swing_low_price + price_diff * ratio)
 
-    # Extensions above swing_high
+    # Extensions
     for ratio in fib_levels_config['extension_above']:
-        potential_fib_levels.append(swing_high_price + price_diff * (ratio - 1))  # Corrected extension calc
+        potential_fib_levels.append(swing_high_price + price_diff * (ratio - 1))
 
-    # Extensions below swing_low (less common for this S/R style, but can be useful if price breaks far)
-    # Typically extensions are from the *end* of a primary move, projecting further.
-    # For simplicity here, we'll use extensions from the swing_high and swing_low.
-    # Alternative: Extensions from current price if it's outside the swing - more complex.
-    # Let's stick to extensions of the identified swing range for now.
-    # For levels below swing_low_price (deep support)
-    for ratio in fib_levels_config['extension_below']:  # e.g. 127.2% of range *below* low
-        potential_fib_levels.append(swing_low_price + price_diff * ratio)  # price_diff is positive, ratio is negative
+    for ratio in fib_levels_config['extension_below']:
+        potential_fib_levels.append(swing_low_price + price_diff * ratio)
 
     # Deduplicate and sort
     potential_fib_levels = sorted(list(set(potential_fib_levels)))
 
     generated_levels = []
 
-    # Combine all existing levels (already selected S/R + newly added Fib levels) for gap checking
-    # Note: existing_levels_raw are unformatted. Comparisons should ideally be consistent.
-    # For simplicity in this function, we will format Fib levels then check against formatted existing.
-    # A more robust check would involve comparing raw values consistently.
-
-    all_considered_levels_for_gap_check = sorted(existing_levels_raw + [lvl for lvl in generated_levels])
+    # This list will hold *formatted* levels already accepted either from existing_levels_raw
+    # or newly generated Fibonacci levels, for consistent gap checking.
+    accepted_levels_for_gap_check = [format_value(lvl, price_precision) for lvl in existing_levels_raw if
+                                     format_value(lvl, price_precision) is not None]
 
     if is_support:
         # For support, we want levels below current_price, sorted descending (closer to current price first)
         potential_fib_levels = [lvl for lvl in potential_fib_levels if lvl < current_price]
         potential_fib_levels.sort(reverse=True)
 
-        last_added_fib_level = float('inf')  # For checking gap between Fib levels themselves
-        if existing_levels_raw:  # Check against the lowest existing support level
-            last_added_fib_level = min(existing_levels_raw)
-
         for level_raw in potential_fib_levels:
             if len(generated_levels) >= num_needed:
                 break
 
-            # Check ATR gap relative to the closest existing S/R level (which is last_added_fib_level initially)
-            # and subsequently relative to other fib levels being added.
-            is_far_enough_from_existing = True  # Assume true initially
-            if existing_levels_raw or generated_levels:  # only check gap if there are levels to check against
-                closest_level_for_gap = 0
-                if generated_levels:  # Prioritize gap from last added Fib level
-                    closest_level_for_gap = generated_levels[-1]  # these are already formatted
-                elif existing_levels_raw:  # if no fib levels yet, check against raw existing S/R
-                    # this implies existing_levels_raw should be sorted appropriately
-                    # For support, we'd compare against the lowest (min) existing formatted S/R level
-                    # This part is tricky: existing_levels_raw are unformatted.
-                    # Let's simplify: the primary ATR gap is checked when integrating. Here, we mostly pick candidates.
-                    # A basic proximity check to avoid very close levels:
-                    min_dist_to_existing = min([abs(level_raw - ex_lvl) for ex_lvl in
-                                                all_considered_levels_for_gap_check]) if all_considered_levels_for_gap_check else float(
-                        'inf')
+            formatted_level = format_value(level_raw, price_precision)
+            if formatted_level is None:
+                continue
 
-                    # ATR Gap: level_raw should be effective_min_gap away from last_added_fib_level (which could be an existing S/R or a Fib)
-                    # For support, new level must be significantly lower.
-                    if not (last_added_fib_level - level_raw >= effective_min_gap):
-                        is_far_enough_from_existing = False
-
-            # Simplified check: avoid adding a level too close to any *raw* existing level
-            # A small tolerance, e.g., atr_value / 4 or a fixed percentage
-            too_close_to_existing = False
-            for ex_lvl_raw in existing_levels_raw:
-                if abs(level_raw - ex_lvl_raw) < (
-                        atr_value * 0.5):  # Heuristic: don't add if within 0.5 ATR of an existing raw level
-                    too_close_to_existing = True
+            # Check gap against all levels already accepted (existing + Fibs generated so far)
+            is_far_enough = True
+            for existing_formatted_lvl in accepted_levels_for_gap_check:
+                if abs(formatted_level - existing_formatted_lvl) < effective_min_gap:
+                    is_far_enough = False
                     break
 
-            if not too_close_to_existing and is_far_enough_from_existing:
-                formatted_level = format_value(level_raw, price_precision)
-                if formatted_level is not None and formatted_level not in [format_value(l, price_precision) for l in
-                                                                           generated_levels]:  # Avoid duplicate formatted levels
-                    generated_levels.append(formatted_level)
-                    last_added_fib_level = level_raw  # Update for gap checking against next Fib level
-                    all_considered_levels_for_gap_check.append(level_raw)
-                    all_considered_levels_for_gap_check.sort(reverse=True)
+            # Additional heuristic check: avoid adding a level too close to any *raw* existing level
+            too_close_to_existing_raw = False
+            # Ensure atr_value is not None and not NaN for multiplication
+            atr_heuristic_threshold = atr_value * 0.5 if atr_value is not None and pd.notna(atr_value) else 0.0
+            for ex_lvl_raw in existing_levels_raw:
+                if abs(level_raw - ex_lvl_raw) < atr_heuristic_threshold:
+                    too_close_to_existing_raw = True
+                    break
 
+            if is_far_enough and not too_close_to_existing_raw:
+                if formatted_level not in generated_levels:  # Avoid duplicate formatted levels within generated list
+                    generated_levels.append(formatted_level)
+                    accepted_levels_for_gap_check.append(
+                        formatted_level)  # Add newly accepted Fib level for future checks
 
     else:  # For resistance
         # For resistance, we want levels above current_price, sorted ascending
         potential_fib_levels = [lvl for lvl in potential_fib_levels if lvl > current_price]
         potential_fib_levels.sort()
 
-        last_added_fib_level = 0.0  # For checking gap between Fib levels themselves
-        if existing_levels_raw:  # Check against the highest existing resistance level
-            last_added_fib_level = max(existing_levels_raw)
-
         for level_raw in potential_fib_levels:
             if len(generated_levels) >= num_needed:
                 break
 
-            is_far_enough_from_existing = True
-            if existing_levels_raw or generated_levels:
-                closest_level_for_gap = 0
-                if generated_levels:
-                    closest_level_for_gap = generated_levels[-1]
-                elif existing_levels_raw:
-                    # For resistance, compare against the highest (max) existing formatted S/R level
-                    pass  # Simplified as above
+            formatted_level = format_value(level_raw, price_precision)
+            if formatted_level is None:
+                continue
 
-                # ATR Gap: level_raw should be effective_min_gap away from last_added_fib_level
-                # For resistance, new level must be significantly higher.
-                if not (level_raw - last_added_fib_level >= effective_min_gap):
-                    is_far_enough_from_existing = False
-            too_close_to_existing = False
-            for ex_lvl_raw in existing_levels_raw:
-                if abs(level_raw - ex_lvl_raw) < (atr_value * 0.5):  # Heuristic
-                    too_close_to_existing = True
+            # Check gap against all levels already accepted (existing + Fibs generated so far)
+            is_far_enough = True
+            for existing_formatted_lvl in accepted_levels_for_gap_check:
+                if abs(formatted_level - existing_formatted_lvl) < effective_min_gap:
+                    is_far_enough = False
                     break
 
-            if not too_close_to_existing and is_far_enough_from_existing:
-                formatted_level = format_value(level_raw, price_precision)
-                if formatted_level is not None and formatted_level not in [format_value(l, price_precision) for l in
-                                                                           generated_levels]:
-                    generated_levels.append(formatted_level)
-                    last_added_fib_level = level_raw
-                    all_considered_levels_for_gap_check.append(level_raw)
-                    all_considered_levels_for_gap_check.sort()
+            # Additional heuristic check: avoid adding a level too close to any *raw* existing level
+            too_close_to_existing_raw = False
+            atr_heuristic_threshold = atr_value * 0.5 if atr_value is not None and pd.notna(atr_value) else 0.0
+            for ex_lvl_raw in existing_levels_raw:
+                if abs(level_raw - ex_lvl_raw) < atr_heuristic_threshold:
+                    too_close_to_existing_raw = True
+                    break
 
-    # Ensure the correct number of levels is returned, even if ATR conditions are strict
-    # If not enough levels were generated due to strict ATR, this function will return fewer than num_needed.
-    # The integration step will have to decide how to handle this (e.g. relax ATR for Fib, or accept fewer levels).
-    # For now, the function returns what it found respecting the rules.
+            if is_far_enough and not too_close_to_existing_raw:
+                if formatted_level not in generated_levels:  # Avoid duplicate formatted levels within generated list
+                    generated_levels.append(formatted_level)
+                    accepted_levels_for_gap_check.append(
+                        formatted_level)  # Add newly accepted Fib level for future checks
 
     # Final sort based on is_support
     if is_support:
-        generated_levels.sort(reverse=True)
+        generated_levels.sort(key=lambda x: x if x is not None else float('-inf'),
+                              reverse=True)  # Handle None if somehow present
     else:
-        generated_levels.sort()
+        generated_levels.sort(key=lambda x: x if x is not None else float('inf'))  # Handle None if somehow present
 
+    # Return up to num_needed levels
     return generated_levels[:num_needed]
 
 
 class LevelItem(BaseModel):
     level: float
-    strength: int  # Changed from description: str
+    strength: int
 
 
 class MarketOverviewItem(BaseModel):
@@ -231,13 +191,10 @@ class MarketOverviewItem(BaseModel):
     sma_30: float | None = None
     sma_150: float | None = None
     sma_300: float | None = None
-    atr_14: float | None = None  # <-- ADD THIS LINE
+    atr_14: float | None = None
     support_levels: List[LevelItem]
     resistance_levels: List[LevelItem]
 
-
-# Config values CACHE_DIRECTORY and MAX_CANDLES_TO_CACHE are now sourced from settings.
-# No need for global placeholders here.
 
 SYMBOL_CONFIG = [
     {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin", "desired_gap_usdt": 500.0},
@@ -254,8 +211,7 @@ router = APIRouter()
 @router.get("/market-overview/", response_model=List[MarketOverviewItem])
 async def get_market_overview():
     results = []
-    active_exchanges = {}  # Dictionary to store active exchange instances
-    # BTC price fetching logic removed
+    active_exchanges = {}
 
     try:
         for config_item in SYMBOL_CONFIG:
@@ -264,22 +220,19 @@ async def get_market_overview():
 
             cached_df: Optional[pd.DataFrame] = None
             last_cached_timestamp: Optional[int] = None
-            # candles_to_fetch_from_exchange = settings.MAX_CANDLES_TO_CACHE # Default: fetch all if no cache - This line will be used in next step
 
             logger.info(f"[{symbol}] Attempting to load OHLCV data from cache...")
             cached_df = read_ohlcv_from_cache(settings.CACHE_DIRECTORY, symbol)
 
             if cached_df is not None and not cached_df.empty:
-                cached_df.sort_values(by='timestamp', ascending=True, inplace=True)  # Ensure sorted
+                cached_df.sort_values(by='timestamp', ascending=True, inplace=True)
                 last_cached_timestamp = cached_df['timestamp'].iloc[-1]
 
                 logger.info(
                     f"[{symbol}] Cache hit. Last cached candle timestamp: {last_cached_timestamp}, Records: {len(cached_df)}")
-                # Fetching logic based on last_cached_timestamp will be in the next step
             else:
                 logger.info(
                     f"[{symbol}] No cache found or cache is empty. Will attempt to fetch {settings.MAX_CANDLES_TO_CACHE} candles for initial cache.")
-                # candles_to_fetch_from_exchange = settings.MAX_CANDLES_TO_CACHE # will be used in next step for limit
 
             try:
                 # Get or create the exchange instance
@@ -315,38 +268,32 @@ async def get_market_overview():
                 current_price_raw = ticker['last'] if ticker and 'last' in ticker and ticker['last'] else 0.0
 
                 if current_price_raw == 0.0:
-                    price_precision = 2  # Default precision
+                    price_precision = 2
                 else:
                     price_precision = get_price_precision(current_price_raw)
                 current_price = format_value(current_price_raw, price_precision)
 
-                # --- Start of new/modified section for Plan Step 3 ---
-                ohlcv_from_exchange = []  # To store data fetched from exchange
-                final_df = pd.DataFrame()  # To store combined data
+                ohlcv_from_exchange = []
+                final_df = pd.DataFrame()
 
-                # Determine fetch parameters
                 fetch_limit = settings.MAX_CANDLES_TO_CACHE
                 fetch_since = None
 
                 if last_cached_timestamp is not None:
-                    fetch_since = int(last_cached_timestamp)  # Ensure it's int
+                    fetch_since = int(last_cached_timestamp)
                     fetch_limit = settings.MAX_CANDLES_TO_CACHE
                     logger.info(
                         f"[{symbol}] Cache found. Fetching new candles since: {fetch_since} (timestamp), limit: {fetch_limit}")
                 else:
                     logger.info(f"[{symbol}] No cache. Fetching {fetch_limit} candles.")
 
-                # Fetch OHLCV data using determined parameters
-                if exchange:  # Make sure exchange object is valid
+                if exchange:
                     ohlcv_from_exchange = await exchange.fetch_ohlcv(symbol, timeframe='1h', since=fetch_since,
                                                                      limit=fetch_limit)
                     logger.info(f"[{symbol}] Fetched {len(ohlcv_from_exchange)} new candles from exchange.")
                 else:
                     logger.error(f"[{symbol}] Exchange object not initialized during OHLCV fetch. Skipping fetch.")
-                    # This case should ideally be caught by earlier exchange initialization checks
-                    # If it happens, it implies a logic flow issue. For now, ohlcv_from_exchange remains empty.
 
-                # Process newly fetched data
                 new_data_df = pd.DataFrame()
                 if ohlcv_from_exchange:
                     new_data_df = pd.DataFrame(ohlcv_from_exchange,
@@ -354,24 +301,20 @@ async def get_market_overview():
                     new_data_df['timestamp'] = new_data_df['timestamp'].astype('int64')
                     new_data_df.sort_values(by='timestamp', ascending=True, inplace=True)
 
-                # Combine cached data with new data
                 if cached_df is not None and not cached_df.empty:
                     final_df = pd.concat([cached_df, new_data_df], ignore_index=True)
                 else:
                     final_df = new_data_df
 
-                # Deduplicate (based on timestamp) and sort
                 if not final_df.empty:
                     final_df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)
                     final_df.sort_values(by='timestamp', ascending=True, inplace=True)
 
-                    # Trim to MAX_CANDLES_TO_CACHE
                     if len(final_df) > settings.MAX_CANDLES_TO_CACHE:
                         final_df = final_df.tail(settings.MAX_CANDLES_TO_CACHE)
 
                     final_df.reset_index(drop=True, inplace=True)
 
-                    # Save the final DataFrame to cache
                     if not final_df.empty:
                         try:
                             write_ohlcv_to_cache(settings.CACHE_DIRECTORY, symbol, final_df)
@@ -383,10 +326,7 @@ async def get_market_overview():
                 else:
                     logger.info(f"[{symbol}] No data after combining cache and fetch. Nothing to cache or process.")
 
-                # --- End of new/modified section for Plan Step 3 ---
-
-                # Existing logic uses 'df'. We need to assign final_df to df.
-                df = final_df  # IMPORTANT: Ensure 'df' is the one used for TA calculations
+                df = final_df
 
                 if df.empty:
                     logger.warning(
@@ -396,16 +336,14 @@ async def get_market_overview():
                         ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
                         support_levels=[], resistance_levels=[]
                     ))
-                    continue  # To the next symbol in SYMBOL_CONFIG
+                    continue
 
-                # --- Existing Data Processing (uses 'df') ---
-# --- ATR Calculation and Related Logic (Merged) ---
-                logger.debug(f"[{symbol}] DataFrame shape before ATR: {df.shape}, initial dtypes:\n{df.dtypes}") # INFO to DEBUG
-                if not df.empty and len(df) > 5: 
-                    logger.debug(f"[{symbol}] DataFrame head before ATR:\n{df.head()}") # INFO to DEBUG
-                    logger.debug(f"[{symbol}] DataFrame tail before ATR:\n{df.tail()}") # INFO to DEBUG
-                elif not df.empty: 
-                    logger.debug(f"[{symbol}] DataFrame contents before ATR:\n{df}") # INFO to DEBUG
+                logger.debug(f"[{symbol}] DataFrame shape before ATR: {df.shape}, initial dtypes:\n{df.dtypes}")
+                if not df.empty and len(df) > 5:
+                    logger.debug(f"[{symbol}] DataFrame head before ATR:\n{df.head()}")
+                    logger.debug(f"[{symbol}] DataFrame tail before ATR:\n{df.tail()}")
+                elif not df.empty:
+                    logger.debug(f"[{symbol}] DataFrame contents before ATR:\n{df}")
 
                 hlc_columns_present = True
                 required_hlc_cols = ['high', 'low', 'close']
@@ -414,41 +352,41 @@ async def get_market_overview():
                         df[col] = pd.to_numeric(df[col], errors='coerce')
                         if df[col].isnull().all():
                             logger.warning(f"[{symbol}] Column '{col}' became all NaNs after numeric conversion.")
+                            hlc_columns_present = False
+                            break
                     else:
-                        logger.error(f"[{symbol}] Critical: Column '{col}' not found. Cannot calculate ATR or other HLC-dependent TAs.")
+                        logger.error(
+                            f"[{symbol}] Critical: Column '{col}' not found. Cannot calculate ATR or other HLC-dependent TAs.")
                         hlc_columns_present = False
-                        # Mark all HLC-dependent TAs as not calculable
-                        df['ATR_14'] = np.nan # Ensure column exists
-                        # Potentially set flags or default other TA columns too
-                        break 
+                        break
 
                 if not hlc_columns_present:
                     logger.error(f"[{symbol}] ATR calculation skipped due to missing HLC columns. ATR_14 set to NaN.")
-                    # Ensure ATR_14 column exists if not already created by above break
-                    if 'ATR_14' not in df.columns:
-                         df['ATR_14'] = np.nan
+                    df['ATR_14'] = np.nan
                 else:
-                     logger.debug(f"[{symbol}] Dtypes after HLC numeric conversion:\n{df.dtypes}") # INFO to DEBUG
-                     MIN_ROWS_FOR_ATR = 20
-                     if len(df) < MIN_ROWS_FOR_ATR:
-                        logger.warning(f"[{symbol}] DataFrame has {len(df)} rows, < minimum ({MIN_ROWS_FOR_ATR}) for stable ATR. ATR_14 set to NaN.")
+                    logger.debug(f"[{symbol}] Dtypes after HLC numeric conversion:\n{df.dtypes}")
+                    MIN_ROWS_FOR_ATR = 20
+                    if len(df) < MIN_ROWS_FOR_ATR:
+                        logger.warning(
+                            f"[{symbol}] DataFrame has {len(df)} rows, < minimum ({MIN_ROWS_FOR_ATR}) for stable ATR. ATR_14 set to NaN.")
                         df['ATR_14'] = np.nan
                     else:
                         try:
-                            atr_series = df.ta.atr(length=14) 
+                            atr_series = df.ta.atr(length=14)
                             if atr_series is not None and not atr_series.empty:
                                 df['ATR_14'] = atr_series
-                                logger.debug(f"[{symbol}] Successfully calculated and assigned ATR_14 series.") # INFO to DEBUG
+                                logger.debug(f"[{symbol}] Successfully calculated and assigned ATR_14 series.")
                             else:
-                                logger.warning(f"[{symbol}] ATR calculation returned None or empty series. Assigning NaN to ATR_14 column.")
-                                df['ATR_14'] = np.nan 
+                                logger.warning(
+                                    f"[{symbol}] ATR calculation returned None or empty series. Assigning NaN to ATR_14 column.")
+                                df['ATR_14'] = np.nan
                         except Exception as e:
-                            logger.error(f"[{symbol}] Error during ATR calculation: {e}. Assigning NaN to ATR_14 column.")
+                            logger.error(
+                                f"[{symbol}] Error during ATR calculation: {e}. Assigning NaN to ATR_14 column.")
                             df['ATR_14'] = np.nan
 
-                atr_value = None 
+                atr_value = None
                 if 'ATR_14' in df.columns and not df['ATR_14'].empty:
-                    # Ensure the index is valid before using iloc[-1], especially if df could be very short
                     if len(df['ATR_14']) > 0:
                         last_atr = df['ATR_14'].iloc[-1]
                         if pd.notna(last_atr):
@@ -462,41 +400,31 @@ async def get_market_overview():
                     logger.warning(f"[{symbol}] 'ATR_14' column is missing or was empty. atr_value remains None.")
 
                 formatted_atr_14 = None
-                if atr_value is not None and pd.notna(atr_value): 
-                    formatted_atr_14 = format_value(atr_value, price_precision)
-                
-                # Ensure the logging fix for effective_minimum_gap is also applied:
-                # atr_log_display = f"{atr_value:.4f}" if atr_value is not None and pd.notna(atr_value) else "N/A"
-                # logger.info(f"[{symbol}] ATR: {atr_log_display}, ...")
-
-                # --- End of ATR specific logic ---
-                    # price_precision should be available from current_price calculation
+                if atr_value is not None and pd.notna(atr_value):
                     formatted_atr_14 = format_value(atr_value, price_precision)
                 elif atr_value is None:
-                    logger.info(f"[{symbol}] ATR could not be calculated or was invalid, formatted_atr_14 remains None.")
-                else: # atr_value is likely np.nan here
+                    logger.info(
+                        f"[{symbol}] ATR could not be calculated or was invalid, formatted_atr_14 remains None.")
+                else:  # atr_value is likely np.nan here
                     logger.warning(f"[{symbol}] Raw atr_value is NaN, formatted_atr_14 remains None.")
-
 
                 logger.info(
                     f"Symbol: {symbol} - Calculated Raw ATR_14: {atr_value if atr_value is not None else 'N/A'}, Formatted ATR_14: {formatted_atr_14 if formatted_atr_14 is not None else 'N/A'}")
-                if atr_value == 0: # This condition can still be true if ATR is genuinely zero
+                if atr_value == 0:
                     logger.warning(
                         f"Symbol: {symbol} - ATR value is 0. This might be due to very low volatility or still an issue if data was sparse. S/R gap logic might not work as expected.")
                 elif atr_value is None:
                     logger.warning(
                         f"Symbol: {symbol} - ATR value is None (could not be calculated). S/R gap logic will rely on desired_gap_usdt.")
-                    # For now, if ATR is 0, the ATR*2 gap will be 0. This means all levels will pass the gap check.
-                    # A more robust solution might involve a fallback minimum gap, but that's outside current scope.
 
-                # Calculate effective_minimum_gap
                 current_symbol_desired_gap = config_item.get('desired_gap_usdt')
                 if current_symbol_desired_gap is None:
                     logger.error(
                         f"[{symbol}] 'desired_gap_usdt' not found in SYMBOL_CONFIG for this symbol. Defaulting its component to 0.")
                     current_symbol_desired_gap = 0.0
 
-                atr_component = atr_value * settings.ATR_MULTIPLIER_FOR_GAP if pd.notna(atr_value) else 0.0
+                atr_component = atr_value * settings.ATR_MULTIPLIER_FOR_GAP if atr_value is not None and pd.notna(
+                    atr_value) else 0.0
 
                 effective_minimum_gap = max(atr_component, current_symbol_desired_gap)
 
@@ -504,67 +432,45 @@ async def get_market_overview():
                 logger.info(
                     f"[{symbol}] ATR: {atr_log_display}, ATR*{settings.ATR_MULTIPLIER_FOR_GAP}: {atr_component:.4f}, DesiredGapUSDT: {current_symbol_desired_gap:.4f} -> EffectiveMinGap: {effective_minimum_gap:.4f}")
 
-                # Initialize support and resistance items
                 support_level_items = []
                 resistance_level_items = []
 
-                # Define order for argrelextrema (like window size / 2)
-                # extrema_order = 5 # Removed, now using settings.EXTREMA_ORDER
                 min_data_for_extrema = settings.EXTREMA_ORDER * 2
 
                 if not df.empty:
                     if len(df) >= min_data_for_extrema:
-                        # Find local minima for support levels
                         low_extrema_indices = argrelextrema(df['low'].values, np.less, order=settings.EXTREMA_ORDER)[0]
                         local_lows = df['low'].iloc[low_extrema_indices].unique()
-                        logger.debug(
-                            f"Symbol: {symbol} - Initial raw local_lows < current_price_raw: {sorted([low for low in local_lows if low < current_price_raw], reverse=True)}")
 
-                        # Filter, sort, and select support levels
-                        # current_price here is already formatted. For comparison with unformatted df values, use current_price_raw
                         recent_supports = sorted([low for low in local_lows if low < current_price_raw], reverse=True)
 
                         support_level_items_filtered = []
-                        last_selected_support_level = float(
-                            'inf')  # Initialize high, as we are looking for levels below
+                        last_selected_support_level = float('inf')
 
-                        for s_level_raw in recent_supports:  # Iterate through all potential recent supports
-                            # ATR Gap Check:
-                            # The first support level is always selected if it's below current price (already filtered by recent_supports).
-                            # Subsequent levels must be at least effective_minimum_gap below the last_selected_support_level.
+                        for s_level_raw in recent_supports:
                             if not support_level_items_filtered or (
                                     last_selected_support_level - s_level_raw >= effective_minimum_gap):
-                                if len(support_level_items_filtered) < 5:  # Only add if we still need levels
+                                if len(support_level_items_filtered) < 5:
                                     tolerance = s_level_raw * 0.0005
                                     touch_count = df['low'].apply(lambda x: abs(x - s_level_raw) <= tolerance).sum()
                                     formatted_level = format_value(s_level_raw, price_precision)
                                     if formatted_level is not None:
                                         support_level_items_filtered.append(
                                             LevelItem(level=formatted_level, strength=touch_count))
-                                        last_selected_support_level = s_level_raw  # Update the last selected raw level for the next comparison
+                                        last_selected_support_level = s_level_raw
                                 else:
-                                    break  # Stop if we have 5 levels
-
-                        support_level_items = support_level_items_filtered  # Assign the filtered list
-                        # Ensure it's sorted, though the selection process should maintain descending order
+                                    break
+                        support_level_items = support_level_items_filtered
                         support_level_items.sort(key=lambda x: x.level, reverse=True)
                         logger.debug(
                             f"Symbol: {symbol} - Support levels after ATR filtering ({len(support_level_items)}): {[item.level for item in support_level_items]}")
 
-                        # Fill with Fibonacci levels if needed for Support
                         if len(support_level_items) < 5:
                             num_needed_support = 5 - len(support_level_items)
-                            if not df.empty and len(df) >= 2:  # Need at least 2 points for a swing
+                            if not df.empty and len(df) >= 2:
                                 swing_low_price_for_fib = df['low'].min()
                                 swing_high_price_for_fib = df['high'].max()
 
-                                # Get raw values of existing support levels to help Fib generator avoid close placement
-                                # The support_level_items currently store LevelItem objects with formatted levels.
-                                # The generate_fibonacci_levels function expects raw float values for existing_levels_raw.
-                                # This is a slight mismatch: current items are formatted.
-                                # For now, we pass the formatted levels. This might mean the proximity check in Fib generator
-                                # compares formatted vs raw, which is not ideal but a simplification for this step.
-                                # A more robust way would be to keep raw values alongside formatted ones until the very end.
                                 raw_existing_supports = [item.level for item in support_level_items]
 
                                 logger.info(
@@ -572,28 +478,25 @@ async def get_market_overview():
                                 logger.debug(
                                     f"Symbol: {symbol} - Fibonacci params for support: swing_low={swing_low_price_for_fib}, swing_high={swing_high_price_for_fib}, current_price={current_price_raw}, num_needed={num_needed_support}, existing_raw_supports_count={len(raw_existing_supports)}, atr_value={atr_value}")
 
-                                fib_support_levels_raw = generate_fibonacci_levels(
+                                fib_support_levels_formatted = generate_fibonacci_levels(
                                     swing_low_price=swing_low_price_for_fib,
                                     swing_high_price=swing_high_price_for_fib,
                                     current_price=current_price_raw,
-                                    # Use raw current price for Fib calculation context
                                     is_support=True,
                                     num_needed=num_needed_support,
                                     existing_levels_raw=raw_existing_supports,
-                                    # Pass existing *formatted* levels as raw context
-                                    effective_min_gap=effective_minimum_gap,  # Pass effective_minimum_gap
-                                    atr_value=atr_value,  # Keep atr_value for heuristic
+                                    effective_min_gap=effective_minimum_gap,
+                                    atr_value=atr_value,
                                     price_precision=price_precision,
                                     logger=logger
                                 )
 
                                 logger.debug(
-                                    f"Symbol: {symbol} - Generated {len(fib_support_levels_raw)} raw Fibonacci support levels: {fib_support_levels_raw}")
+                                    f"Symbol: {symbol} - Generated {len(fib_support_levels_formatted)} Fibonacci support levels: {fib_support_levels_formatted}")
 
                                 existing_formatted_levels_set = {item.level for item in support_level_items}
-                                for fib_level_val in fib_support_levels_raw:  # These are already formatted by the generator
-                                    if fib_level_val not in existing_formatted_levels_set:  # Avoid duplicates
-                                        # Add with a default strength, e.g., 0 or 1
+                                for fib_level_val in fib_support_levels_formatted:
+                                    if fib_level_val not in existing_formatted_levels_set:
                                         support_level_items.append(LevelItem(level=fib_level_val, strength=1))
                                         existing_formatted_levels_set.add(fib_level_val)
                                         if len(support_level_items) >= 5:
@@ -602,74 +505,45 @@ async def get_market_overview():
                                 logger.warning(
                                     f"Not enough data points in DataFrame for {symbol} to calculate Fibonacci support levels (need >= 2, got {len(df)}).")
 
-                            # Sort all supports (original + Fib) and truncate to 5
                             support_level_items.sort(key=lambda x: x.level, reverse=True)
-                            if len(support_level_items) > 5:
-                                support_level_items = support_level_items[:5]
-
-                            # If still less than 5, it means Fib generator couldn't find enough valid levels.
-                            # The requirement is "exactly 5 levels". This might need a fallback if Fib is insufficient.
-                            # For now, we rely on Fib generation; if it's short, we'll have fewer.
-                            # Plan step 9 (Review and Test) will be important.
-                            # The original issue states: "if you out of levels you can add fibo levels ... I need to have exactly 5 levels no less!"
-                            # This implies Fib should try harder or have relaxed rules if needed.
-                            # The current fib_generator tries to respect ATR. If it can't, it returns fewer.
-                            # This might require a second pass for Fib with relaxed ATR if count is still < 5.
-                            # Let's proceed with current Fib generator strictness and re-evaluate in testing.
-
-                        # Ensure final list has at most 5 levels (already done above, but as a safeguard)
-                        if len(support_level_items) > 5:
                             support_level_items = support_level_items[:5]
 
-                        # Logging final support levels for the symbol
                         logger.info(
                             f"Final support levels for {symbol} ({len(support_level_items)} levels): {[item.level for item in support_level_items]}")
 
-                        # Find local maxima for resistance levels
                         high_extrema_indices = \
                         argrelextrema(df['high'].values, np.greater, order=settings.EXTREMA_ORDER)[0]
                         local_highs = df['high'].iloc[high_extrema_indices].unique()
-                        logger.debug(
-                            f"Symbol: {symbol} - Initial raw local_highs > current_price_raw: {sorted([high for high in local_highs if high > current_price_raw])}")
 
-                        # Filter, sort, and select resistance levels
-                        # current_price here is already formatted. For comparison with unformatted df values, use current_price_raw
                         recent_resistances = sorted([high for high in local_highs if high > current_price_raw])
 
                         resistance_level_items_filtered = []
-                        last_selected_resistance_level = 0.0  # Initialize low, as we are looking for levels above
+                        last_selected_resistance_level = float('-inf')
 
-                        for r_level_raw in recent_resistances:  # Iterate through all potential recent resistances
-                            # ATR Gap Check:
-                            # The first resistance level is always selected if it's above current price (already filtered by recent_resistances).
-                            # Subsequent levels must be at least effective_minimum_gap above the last_selected_resistance_level.
+                        for r_level_raw in recent_resistances:
                             if not resistance_level_items_filtered or (
                                     r_level_raw - last_selected_resistance_level >= effective_minimum_gap):
-                                if len(resistance_level_items_filtered) < 5:  # Only add if we still need levels
+                                if len(resistance_level_items_filtered) < 5:
                                     tolerance = r_level_raw * 0.0005
                                     touch_count = df['high'].apply(lambda x: abs(x - r_level_raw) <= tolerance).sum()
                                     formatted_level = format_value(r_level_raw, price_precision)
                                     if formatted_level is not None:
                                         resistance_level_items_filtered.append(
                                             LevelItem(level=formatted_level, strength=touch_count))
-                                        last_selected_resistance_level = r_level_raw  # Update the last selected raw level for the next comparison
+                                        last_selected_resistance_level = r_level_raw
                                 else:
-                                    break  # Stop if we have 5 levels
-
-                        resistance_level_items = resistance_level_items_filtered  # Assign the filtered list
-                        # Ensure it's sorted, though the selection process should maintain ascending order
+                                    break
+                        resistance_level_items = resistance_level_items_filtered
                         resistance_level_items.sort(key=lambda x: x.level)
                         logger.debug(
                             f"Symbol: {symbol} - Resistance levels after ATR filtering ({len(resistance_level_items)}): {[item.level for item in resistance_level_items]}")
 
-                        # Fill with Fibonacci levels if needed for Resistance
                         if len(resistance_level_items) < 5:
                             num_needed_resistance = 5 - len(resistance_level_items)
-                            if not df.empty and len(df) >= 2:  # Need at least 2 points for a swing
+                            if not df.empty and len(df) >= 2:
                                 swing_low_price_for_fib = df['low'].min()
                                 swing_high_price_for_fib = df['high'].max()
 
-                                # Pass existing *formatted* resistance levels as raw context (same simplification as with support)
                                 raw_existing_resistances = [item.level for item in resistance_level_items]
 
                                 logger.info(
@@ -677,27 +551,27 @@ async def get_market_overview():
                                 logger.debug(
                                     f"Symbol: {symbol} - Fibonacci params for resistance: swing_low={swing_low_price_for_fib}, swing_high={swing_high_price_for_fib}, current_price={current_price_raw}, num_needed={num_needed_resistance}, existing_raw_resistances_count={len(raw_existing_resistances)}, atr_value={atr_value}")
 
-                                fib_resistance_levels_raw = generate_fibonacci_levels(
+                                fib_resistance_levels_formatted = generate_fibonacci_levels(
                                     swing_low_price=swing_low_price_for_fib,
                                     swing_high_price=swing_high_price_for_fib,
-                                    current_price=current_price_raw,  # Use raw current price
-                                    is_support=False,  # Key change for resistance
+                                    current_price=current_price_raw,
+                                    is_support=False,
                                     num_needed=num_needed_resistance,
                                     existing_levels_raw=raw_existing_resistances,
-                                    effective_min_gap=effective_minimum_gap,  # Pass effective_minimum_gap
-                                    atr_value=atr_value,  # Keep atr_value for heuristic
+                                    effective_min_gap=effective_minimum_gap,
+                                    atr_value=atr_value,
                                     price_precision=price_precision,
                                     logger=logger
                                 )
 
                                 logger.debug(
-                                    f"Symbol: {symbol} - Generated {len(fib_resistance_levels_raw)} raw Fibonacci resistance levels: {fib_resistance_levels_raw}")
+                                    f"Symbol: {symbol} - Generated {len(fib_resistance_levels_formatted)} Fibonacci resistance levels: {fib_resistance_levels_formatted}")
 
                                 existing_formatted_levels_set = {item.level for item in resistance_level_items}
-                                for fib_level_val in fib_resistance_levels_raw:  # These are already formatted
-                                    if fib_level_val not in existing_formatted_levels_set:  # Avoid duplicates
+                                for fib_level_val in fib_resistance_levels_formatted:
+                                    if fib_level_val not in existing_formatted_levels_set:
                                         resistance_level_items.append(
-                                            LevelItem(level=fib_level_val, strength=1))  # Default strength 1
+                                            LevelItem(level=fib_level_val, strength=1))
                                         existing_formatted_levels_set.add(fib_level_val)
                                         if len(resistance_level_items) >= 5:
                                             break
@@ -705,22 +579,13 @@ async def get_market_overview():
                                 logger.warning(
                                     f"Not enough data points in DataFrame for {symbol} to calculate Fibonacci resistance levels (need >= 2, got {len(df)}).")
 
-                            # Sort all resistances (original + Fib) and truncate to 5
-                            resistance_level_items.sort(key=lambda x: x.level)  # Ascending for resistance
-                            if len(resistance_level_items) > 5:
-                                resistance_level_items = resistance_level_items[:5]
-
-                            # Notes on "exactly 5 levels" from support integration apply here too.
-
-                        # Ensure final list has at most 5 levels (already done above, but as a safeguard)
-                        if len(resistance_level_items) > 5:
+                            resistance_level_items.sort(key=lambda x: x.level)
                             resistance_level_items = resistance_level_items[:5]
 
-                        # Logging final resistance levels for the symbol
                         logger.info(
                             f"Final resistance levels for {symbol} ({len(resistance_level_items)} levels): {[item.level for item in resistance_level_items]}")
 
-                    else:  # Not enough data for reliable extrema detection, use n-smallest/n-largest
+                    else:
                         logger.info(
                             f"Using n-smallest/n-largest for S/R for {symbol} due to insufficient data for extrema (got {len(df)}, need {min_data_for_extrema})")
                         raw_supports = sorted(df['low'].nsmallest(5).tolist())
@@ -730,8 +595,6 @@ async def get_market_overview():
                         for sl_raw in raw_supports:
                             formatted_sl = format_value(sl_raw, price_precision)
                             if formatted_sl is not None:
-                                # For these, actual touch count might be low as they are just n-smallest/largest
-                                # Assign strength 1 as per requirement
                                 support_level_items.append(LevelItem(level=formatted_sl, strength=1))
 
                         resistance_level_items = []
@@ -740,21 +603,17 @@ async def get_market_overview():
                             if formatted_rl is not None:
                                 resistance_level_items.append(LevelItem(level=formatted_rl, strength=1))
 
-                if len(df) < 300:  # Minimum needed for all TAs
+                if len(df) < 300:
                     logger.warning(
                         f"Not enough data points for {symbol} to calculate all TAs (need 300, got {len(df)}). Skipping TA calculations.")
-                    # Support and resistance already calculated above if possible (and formatted)
                     results.append(MarketOverviewItem(
-                        symbol=symbol, current_price=current_price, ema_21=None, ema_89=None,
-                        # current_price is already formatted
-                        sma_30=None, sma_150=None, sma_300=None, atr_14=formatted_atr_14,
-                        # Use formatted_atr_14 (could be None)
+                        symbol=symbol, current_price=current_price,
+                        ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=formatted_atr_14,
                         support_levels=support_level_items,
                         resistance_levels=resistance_level_items
                     ))
                     continue
 
-                # Calculate EMAs and SMAs
                 df['ema_21'] = df.ta.ema(length=21)
                 df['ema_89'] = df.ta.ema(length=89)
                 df['sma_30'] = df.ta.sma(length=30)
@@ -773,21 +632,20 @@ async def get_market_overview():
                 formatted_sma_300 = format_value(raw_sma_300, price_precision) if pd.notna(raw_sma_300) else None
 
                 results.append(MarketOverviewItem(
-                    symbol=symbol, current_price=current_price,  # current_price is already formatted
+                    symbol=symbol, current_price=current_price,
                     ema_21=formatted_ema_21,
                     ema_89=formatted_ema_89,
                     sma_30=formatted_sma_30,
                     sma_150=formatted_sma_150,
                     sma_300=formatted_sma_300,
-                    atr_14=formatted_atr_14,  # Add formatted_atr_14 here
-                    support_levels=support_level_items,  # Already formatted
-                    resistance_levels=resistance_level_items  # Already formatted
+                    atr_14=formatted_atr_14,
+                    support_levels=support_level_items,
+                    resistance_levels=resistance_level_items
                 ))
 
             except ccxt.NetworkError as e:
                 logger.error(f"Network error for {symbol} on {exchange_id}: {e}. Default data returned.")
-                # Ensure current_price is formatted (0.0 becomes 0.00 if precision is 2)
-                formatted_current_price_on_error = format_value(0.0, 2)  # Default to 2 for error cases with 0.0 price
+                formatted_current_price_on_error = format_value(0.0, 2)
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
@@ -816,7 +674,7 @@ async def get_market_overview():
                 except Exception as e:
                     print(f"Error closing {ex_id} exchange: {e}")
 
-    if not results and SYMBOL_CONFIG:  # Only raise if SYMBOL_CONFIG was not empty and still no results
+    if not results and SYMBOL_CONFIG:
         logger.error("Could not fetch any market data for the configured symbols.")
         raise HTTPException(status_code=500, detail="Could not fetch any market data for the configured symbols.")
     return results
