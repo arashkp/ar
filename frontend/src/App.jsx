@@ -1,5 +1,5 @@
 import './App.css';
-import DashboardPage from './pages/DashboardPage';
+import DashboardPage from './pages/DashboardPage.jsx';
 import ThemeToggleButton from './components/ThemeToggleButton'; // Import ThemeToggleButton
 
 function App() {
