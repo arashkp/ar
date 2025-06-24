@@ -50,19 +50,4 @@ class OrderResponse(OrderBase):
     fee_currency: Optional[str] = None
 
     class Config:
-        from_attributes = True # Pydantic V2 way for ORM compatibility
-        # from_attributes = True # Pydantic V2 way for ORM compatibility
-        # Pydantic V2 is preferred, but sticking to orm_mode for broader compatibility for now
-        # unless specified. Assuming Pydantic V1 for orm_mode. If V2 is used,
-        # this should be from_attributes = True.
-        # Given the problem context usually implies recent versions,
-        # let's assume from_attributes is the modern way if orm_mode causes issues.
-        # For now, let's stick to orm_mode as it's more common in existing codebases.
-        # If this were Pydantic V2, it would be:
-        # model_config = {"from_attributes": True}
-
-        # Re-checking common practice for FastAPI/SQLAlchemy, orm_mode is standard for Pydantic v1.x
-        # If the environment uses Pydantic v2.x, this should be `from_attributes = True`.
-        # Without knowing the Pydantic version, `orm_mode = True` is a safe bet for compatibility.
-        # Let's assume Pydantic v1.x for now.
-        pass
+        from_attributes = True  # Pydantic V2 way for ORM compatibility

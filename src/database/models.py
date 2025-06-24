@@ -33,3 +33,22 @@ class Order(BaseModel):
 
     def __repr__(self):
         return f"<Order(id={self.id}, symbol='{self.symbol}', side='{self.side}', type='{self.type}', status='{self.status}')>"
+
+class Trade(BaseModel):
+    __tablename__ = "trades"
+
+    exchange_id = Column(String)
+    symbol = Column(String)
+    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
+    price = Column(Float)
+    amount = Column(Float)
+    side = Column(String)  # 'buy' or 'sell'
+    type = Column(String)  # 'market' or 'limit'
+    fee = Column(Float, nullable=True, default=0.0)
+    fee_currency = Column(String, nullable=True)
+    pnl = Column(Float, nullable=True)  # Profit/Loss for the trade
+    is_spot = Column(Boolean, default=True)
+    order_id = Column(Integer, nullable=True)  # Reference to the order that created this trade
+
+    def __repr__(self):
+        return f"<Trade(id={self.id}, symbol='{self.symbol}', side='{self.side}', amount={self.amount}, price={self.price})>"

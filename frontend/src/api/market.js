@@ -1,14 +1,12 @@
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+import { apiGet, formatErrorMessage } from './apiHelpers';
 
 export const getMarketOverview = async () => {
-  try {
-    const response = await axios.get(`${API_BASE_URL}/market_overview`);
+  const response = await apiGet('/market_overview');
+  
+  if (response.success) {
     return response.data;
-  } catch (error) {
-    console.error('Error fetching market overview:', error);
-    // In a real application, you might want to throw the error or return a specific error object.
+  } else {
+    console.error('Error fetching market overview:', formatErrorMessage(response, 'Failed to fetch market overview'));
     return null;
   }
 };

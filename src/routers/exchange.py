@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
 from typing import Optional
 from src.services.trading_api import fetch_ohlcv as fetch_ohlcv_service, fetch_balance as fetch_balance_service
-from config.config import Settings, get_settings # Assuming you will have settings for API keys
+from config.config import Settings, get_settings
+from src.utils.error_handlers import exchange_error_handler, api_error_handler
+from src.utils.api_key_manager import get_api_keys_for_public_data, get_api_keys_for_private_data
 
 router = APIRouter()
 
 @router.get("/api/v1/exchange/ohlcv")
+@exchange_error_handler("exchange_id", "OHLCV data fetching")
 async def get_ohlcv(
     exchange_id: str = Query(..., description="Exchange ID (e.g., 'binance', 'coinbasepro')"),
     symbol: str = Query(..., description="Trading symbol (e.g., 'BTC/USDT')"),
@@ -20,30 +23,26 @@ async def get_ohlcv(
     Fetches OHLCV (Open, High, Low, Close, Volume) data for a specific symbol
     from a given exchange.
     """
-    # Use provided keys first, then fallback to settings if available and needed by an exchange
-    # For many public OHLCV endpoints, keys are not strictly required by ccxt if the exchange allows it.
-    # The trading_api.py handles the logic of when to use keys.
-    effective_api_key = api_key or getattr(settings, f"{exchange_id.upper()}_API_KEY", None)
-    effective_api_secret = api_secret or getattr(settings, f"{exchange_id.upper()}_API_SECRET", None)
+    # Use helper for API key management (optional for public data)
+    effective_api_key, effective_api_secret = get_api_keys_for_public_data(
+        exchange_id=exchange_id,
+        query_api_key=api_key,
+        query_api_secret=api_secret,
+        settings=settings
+    )
 
-    try:
-        ohlcv_data = await fetch_ohlcv_service(
-            exchange_id=exchange_id,
-            symbol=symbol,
-            timeframe=timeframe,
-            limit=limit,
-            api_key=effective_api_key,
-            api_secret=effective_api_secret
-        )
-        return ohlcv_data
-    except HTTPException as e:
-        raise e # Re-raise HTTPException from service layer
-    except Exception as e:
-        # Catch any other unexpected errors
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
-
+    ohlcv_data = await fetch_ohlcv_service(
+        exchange_id=exchange_id,
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=limit,
+        api_key=effective_api_key,
+        api_secret=effective_api_secret
+    )
+    return ohlcv_data
 
 @router.get("/api/v1/exchange/balance")
+@exchange_error_handler("exchange_id", "balance fetching")
 async def get_balance(
     exchange_id: str = Query(..., description="Exchange ID (e.g., 'binance')"),
     # API keys can be passed as query params or ideally loaded from config/env
@@ -56,27 +55,18 @@ async def get_balance(
     Requires API key and secret, which can be provided as query parameters
     or configured via environment variables (e.g., BINANCE_API_KEY).
     """
-    # Prioritize query parameters, then fall back to environment/settings
-    final_api_key = api_key or getattr(settings, f"{exchange_id.upper()}_API_KEY", None)
-    final_api_secret = api_secret or getattr(settings, f"{exchange_id.upper()}_API_SECRET", None)
+    # Use helper for API key management (required for private data)
+    final_api_key, final_api_secret = get_api_keys_for_private_data(
+        exchange_id=exchange_id,
+        query_api_key=api_key,
+        query_api_secret=api_secret,
+        settings=settings,
+        operation="balance fetching"
+    )
 
-    if not final_api_key or not final_api_secret:
-        raise HTTPException(
-            status_code=400,
-            detail=f"API key and secret are required for {exchange_id}. "
-                   f"Provide them as query parameters or set them as environment variables "
-                   f" (e.g., {exchange_id.upper()}_API_KEY, {exchange_id.upper()}_API_SECRET)."
-        )
-
-    try:
-        balance_data = await fetch_balance_service(
-            exchange_id=exchange_id,
-            api_key=final_api_key,
-            api_secret=final_api_secret
-        )
-        return balance_data
-    except HTTPException as e:
-        raise e # Re-raise HTTPException from service layer
-    except Exception as e:
-        # Catch any other unexpected errors
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+    balance_data = await fetch_balance_service(
+        exchange_id=exchange_id,
+        api_key=final_api_key,
+        api_secret=final_api_secret
+    )
+    return balance_data

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { apiPost, validateRequiredFields, validatePositiveNumber, formatErrorMessage } from './apiHelpers';
 
 const API_BASE_URL = 'http://localhost:8000/api/v1'; // Assuming the same base URL
 
@@ -13,23 +13,40 @@ const API_BASE_URL = 'http://localhost:8000/api/v1'; // Assuming the same base U
  * @returns {Promise<object|null>} The response data from the API on success, or null on error.
  */
 export const placeOrder = async (orderDetails) => {
-  try {
-    // Basic validation for required fields
-    if (!orderDetails || !orderDetails.symbol || !orderDetails.side || !orderDetails.type || !orderDetails.amount) {
-      throw new Error('Missing required order details: symbol, side, type, and amount are required.');
-    }
-    if (orderDetails.type === 'LIMIT' && (orderDetails.price === undefined || orderDetails.price === null || orderDetails.price <= 0)) {
-      throw new Error('Price is required for LIMIT orders and must be a positive number.');
-    }
+  // Validate required fields using helper
+  const requiredValidation = validateRequiredFields(
+    orderDetails, 
+    ['symbol', 'side', 'type', 'amount'], 
+    'order placement'
+  );
+  
+  if (!requiredValidation.success) {
+    console.error('Validation error:', requiredValidation.error);
+    return { error: requiredValidation.error };
+  }
 
-    const response = await axios.post(`${API_BASE_URL}/orders/place`, orderDetails);
-    return response.data; // Assuming the API returns data including order ID, status, etc.
-  } catch (error) {
-    console.error('Error placing order:', error.response ? error.response.data : error.message);
-    // In a real application, you might want to throw a more specific error or return an error object
-    // that the UI can use to display a user-friendly message.
-    // For now, re-throwing the error or returning null based on how you want to handle it in the component.
-    // Let's return null for simplicity in this case, so the component can check for it.
-    return null;
+  // Validate amount is positive
+  const amountValidation = validatePositiveNumber(orderDetails.amount, 'amount', 'order placement');
+  if (!amountValidation.success) {
+    console.error('Validation error:', amountValidation.error);
+    return { error: amountValidation.error };
+  }
+
+  // Validate price for LIMIT orders
+  if (orderDetails.type === 'LIMIT') {
+    const priceValidation = validatePositiveNumber(orderDetails.price, 'price', 'order placement');
+    if (!priceValidation.success) {
+      console.error('Validation error:', priceValidation.error);
+      return { error: priceValidation.error };
+    }
+  }
+
+  // Use API helper for the request
+  const response = await apiPost('/orders/place', orderDetails);
+  
+  if (response.success) {
+    return response.data;
+  } else {
+    return { error: formatErrorMessage(response, 'Failed to place order') };
   }
 };
