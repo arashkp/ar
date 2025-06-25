@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { placeOrder } from '../api/orders'; // Assuming this path is correct
 
-const OrderEntryForm = ({ selectedSymbol, clickedPrice }) => {
+const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefinedVolumeUSDT, setPredefinedVolumeUSDT }) => {
+  // Defensive fallback for undefined props
+  const safePredefinedVolume = predefinedVolumeUSDT !== undefined && predefinedVolumeUSDT !== null ? predefinedVolumeUSDT : '100';
   // State for form inputs
   const [symbol, setSymbol] = useState('');
   const [price, setPrice] = useState(''); // For LIMIT orders
   const [amount, setAmount] = useState(''); // Amount in base asset
-  const [side, setSide] = useState('BUY'); // 'BUY' or 'SELL'
   const [type, setType] = useState('LIMIT'); // 'LIMIT' or 'MARKET'
-
-  // State for predefined volume and its calculation
-  const [predefinedVolumeUSDT, setPredefinedVolumeUSDT] = useState('100'); // e.g., 100 USDT
-  const [calculatedAssetAmount, setCalculatedAssetAmount] = useState(''); // Asset amount from predefined USDT
 
   // State for API interaction
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState(''); // For success/error messages
+
+  // Debug log for props
+  console.log('OrderEntryForm props:', { selectedSymbol, clickedPrice, side, predefinedVolumeUSDT });
 
   // Effect to update symbol from prop
   useEffect(() => {
@@ -24,24 +24,76 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice }) => {
     }
   }, [selectedSymbol]);
 
-  // Effect to update price from prop if type is LIMIT
+  // Effect to update price and amount from clickedPrice
   useEffect(() => {
-    if (clickedPrice && type === 'LIMIT') {
-      setPrice(clickedPrice.toString());
+    if (clickedPrice !== undefined && clickedPrice !== null) {
+      const pricePrecision = getSymbolPrecision(symbol);
+      const formattedPrice = parseFloat(clickedPrice).toFixed(pricePrecision);
+      setPrice(formattedPrice);
+      // Also set amount based on predefined volume
+      const numPrice = parseFloat(formattedPrice);
+      const numPredefinedVolume = parseFloat(safePredefinedVolume);
+      if (numPrice > 0 && numPredefinedVolume > 0) {
+        const amountPrecision = getAmountPrecision(symbol);
+        const rawAmount = numPredefinedVolume / numPrice;
+        const flooredAmount = floorToPrecision(rawAmount, amountPrecision);
+        setAmount(flooredAmount.toFixed(amountPrecision));
+      }
     }
-  }, [clickedPrice, type]);
+  }, [clickedPrice, safePredefinedVolume, symbol]);
 
-  // Effect to calculate asset amount from predefined USDT volume and price
-  // This is a simplified calculation.
-  useEffect(() => {
-    const numPrice = parseFloat(price);
-    const numPredefinedVolume = parseFloat(predefinedVolumeUSDT);
-    if (numPrice > 0 && numPredefinedVolume > 0) {
-      setCalculatedAssetAmount((numPredefinedVolume / numPrice).toFixed(8)); // Adjust precision as needed
-    } else {
-      setCalculatedAssetAmount('');
+  // Helper to get precision for price and amount
+  const getSymbolPrecision = (symbol) => {
+    if (!symbol) return 2;
+    if (symbol.includes('DOGE') || symbol.includes('POPCAT')) return 4;
+    if (symbol.includes('BTC')) return 0;
+    if (symbol.includes('ETH')) return 1;
+    return 2;
+  };
+
+  // Helper to get amount precision (BTC: 8, others: same as price precision)
+  const getAmountPrecision = (symbol) => {
+    if (!symbol) return 8;
+    if (symbol.includes('BTC')) return 8;
+    return getSymbolPrecision(symbol);
+  };
+
+  // Helper to floor a number to a given precision
+  const floorToPrecision = (value, precision) => {
+    const factor = Math.pow(10, precision);
+    return Math.floor(parseFloat(value) * factor) / factor;
+  };
+
+  // Helper to get display precision for amount label (BTC: 8, others: 2)
+  const getAmountDisplayPrecision = () => {
+    return 2;
+  };
+
+  // Handler for percent buttons
+  const handlePercentChange = (percent) => {
+    const current = parseFloat(price) || 0;
+    const pricePrecision = getSymbolPrecision(symbol);
+    const newPrice = current + (current * percent / 100);
+    setPrice(newPrice.toFixed(pricePrecision));
+    // Also update amount
+    const numPredefinedVolume = parseFloat(safePredefinedVolume);
+    if (newPrice > 0 && numPredefinedVolume > 0) {
+      const amountPrecision = getAmountPrecision(symbol);
+      const rawAmount = numPredefinedVolume / newPrice;
+      const flooredAmount = floorToPrecision(rawAmount, amountPrecision);
+      setAmount(flooredAmount.toFixed(amountPrecision));
     }
-  }, [price, predefinedVolumeUSDT]);
+  };
+
+  // Format price and amount on blur
+  const handlePriceBlur = () => {
+    const pricePrecision = getSymbolPrecision(symbol);
+    if (price) setPrice(parseFloat(price).toFixed(pricePrecision));
+  };
+  const handleAmountBlur = () => {
+    const amountPrecision = getAmountPrecision(symbol);
+    if (amount) setAmount(floorToPrecision(amount, amountPrecision).toFixed(amountPrecision));
+  };
 
   // Handler for form submission
   const handleSubmit = async (e) => {
@@ -53,14 +105,10 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice }) => {
       symbol,
       side,
       type,
-      // Ensure amount is a number; prioritize manually entered amount
-      amount: parseFloat(amount) || parseFloat(calculatedAssetAmount) || 0,
-      // Price is only sent for LIMIT orders; backend should handle if price is not applicable for MARKET
+      amount: parseFloat(amount) || 0,
       price: type === 'LIMIT' ? parseFloat(price) : undefined,
     };
 
-    // Basic validation before sending
-    // Validation for amount should check if the final amount is > 0
     if (!orderDetails.symbol || !(orderDetails.amount > 0)) {
       setMessage('Error: Symbol and a valid positive amount are required.');
       setIsLoading(false);
@@ -75,107 +123,135 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice }) => {
     const result = await placeOrder(orderDetails);
     setIsLoading(false);
 
-    if (result && result.order_id) { // Assuming API returns order_id on success
+    if (result && result.order_id) {
       setMessage(`Success: Order placed with ID: ${result.order_id}`);
-      // Clear form (optional, based on UX preference)
       setPrice('');
       setAmount('');
-      // setPredefinedVolumeUSDT(''); // Or keep it for next order
-      setCalculatedAssetAmount('');
     } else {
       setMessage(result && result.error ? `Error: ${result.error}` : 'Error: Failed to place order.');
     }
   };
 
   return (
-    <div className="p-4 border rounded-lg shadow-md bg-white dark:bg-gray-800">
-      <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">Place Order</h2>
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-6">
+      <h2 className="text-xl font-semibold mb-6 text-gray-800 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-3">
+        Place Order
+      </h2>
 
-      {/* Predefined Volume */}
-      <div className="mb-3">
-        <label htmlFor="predefinedVolume" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Predefined Volume (USDT):</label>
-        <input
-          type="number"
-          id="predefinedVolume"
-          value={predefinedVolumeUSDT}
-          onChange={(e) => setPredefinedVolumeUSDT(e.target.value)}
-          placeholder="e.g., 100"
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-gray-200"
-        />
-      </div>
-
-      {/* Symbol Display */}
-      <p className="mb-3 text-sm text-gray-700 dark:text-gray-300">Symbol: <span className="font-semibold">{symbol || 'N/A'}</span></p>
-
-      {/* Type Selector */}
-      <div className="mb-3">
-        <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Order Type:</span>
-        <div className="mt-1 flex rounded-md shadow-sm">
-          <button
-            type="button"
-            onClick={() => setType('LIMIT')}
-            className={`px-4 py-2 rounded-l-md border ${type === 'LIMIT' ? 'bg-indigo-600 text-white dark:bg-indigo-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-sm`}
-          >
-            Limit
-          </button>
-          <button
-            type="button"
-            onClick={() => { setType('MARKET'); setPrice(''); }} // Clear price for market orders
-            className={`px-4 py-2 rounded-r-md border ${type === 'MARKET' ? 'bg-indigo-600 text-white dark:bg-indigo-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-sm`}
-          >
-            Market
-          </button>
-        </div>
-      </div>
-
-      {/* Price Input (Limit Orders Only) */}
-      {type === 'LIMIT' && (
-        <div className="mb-3">
-          <label htmlFor="price" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price:</label>
-          <input
-            type="number"
-            id="price"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="Enter price for limit order"
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-gray-200"
-          />
+      {/* Symbol Display (no label, styled) */}
+      {symbol && (
+        <div className="mb-4 flex justify-center">
+          <span className="inline-block px-3 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-bold text-lg tracking-wide">
+            {symbol}
+          </span>
         </div>
       )}
 
-      {/* Amount Input */}
-      <div className="mb-3">
-        <label htmlFor="amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount (Asset):</label>
+      {/* Predefined Volume */}
+      <div className="mb-4">
+        <label htmlFor="predefinedVolume" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Predefined Volume (USDT):
+        </label>
         <input
           type="number"
+          id="predefinedVolume"
+          value={safePredefinedVolume}
+          onChange={(e) => setPredefinedVolumeUSDT(e.target.value)}
+          placeholder="e.g., 100"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+        />
+      </div>
+
+      {/* Type Selector */}
+      <div className="mb-4 flex justify-center">
+        <button
+          type="button"
+          onClick={() => setType('LIMIT')}
+          className={`flex-1 px-4 py-2 border text-sm font-medium transition-colors ${
+            type === 'LIMIT' 
+              ? 'bg-blue-600 text-white border-blue-600' 
+              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+          } rounded-l-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+        >
+          Spot
+        </button>
+        <button
+          type="button"
+          onClick={() => { setType('MARKET'); setPrice(''); }}
+          className={`flex-1 px-4 py-2 border text-sm font-medium transition-colors ml-2 ${
+            type === 'MARKET' 
+              ? 'bg-blue-600 text-white border-blue-600' 
+              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+          } rounded-r-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+        >
+          Future
+        </button>
+      </div>
+
+      {/* Price and Amount Inputs (no labels, always shown) */}
+      <div className="mb-4">
+        <div className="flex justify-center gap-1 mb-2">
+          <button type="button" onClick={() => handlePercentChange(2)} className="text-xs px-1 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200 min-w-[32px]">+2%</button>
+          <button type="button" onClick={() => handlePercentChange(0.5)} className="text-xs px-1 py-0.5 rounded bg-green-100 text-green-700 hover:bg-green-200 min-w-[32px]">+.5%</button>
+          <button type="button" onClick={() => handlePercentChange(-0.5)} className="text-xs px-1 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 min-w-[32px]">-.5%</button>
+          <button type="button" onClick={() => handlePercentChange(-2)} className="text-xs px-1 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 min-w-[32px]">-2%</button>
+        </div>
+        <div className="relative mb-2">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none">$</span>
+          <input
+            type="text"
+            id="price"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            onBlur={handlePriceBlur}
+            placeholder="Price"
+            className="w-full pl-7 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 text-center"
+          />
+        </div>
+        <input
+          type="text"
           id="amount"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder={calculatedAssetAmount ? `Default: ${calculatedAssetAmount}` : "Enter amount"}
-          className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:text-gray-200"
+          onBlur={handleAmountBlur}
+          placeholder="Amount"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 text-center"
         />
-        {calculatedAssetAmount && !amount && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Using calculated amount from predefined volume: {calculatedAssetAmount}</p>}
+        {/* Actual amount label */}
+        {amount && (
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-center">
+            Actual: $
+            <span className="font-mono">
+              {Number(floorToPrecision(amount, 2)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Side Selector */}
-      <div className="mb-4">
-        <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Side:</span>
-        <div className="mt-1 flex rounded-md shadow-sm">
-          <button
-            type="button"
-            onClick={() => setSide('BUY')}
-            className={`px-4 py-2 rounded-l-md border w-1/2 ${side === 'BUY' ? 'bg-green-600 text-white dark:bg-green-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 text-sm`}
-          >
-            Buy
-          </button>
-          <button
-            type="button"
-            onClick={() => setSide('SELL')}
-            className={`px-4 py-2 rounded-r-md border w-1/2 ${side === 'SELL' ? 'bg-red-600 text-white dark:bg-red-500' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 text-sm`}
-          >
-            Sell
-          </button>
-        </div>
+      <div className="mb-6 flex justify-center">
+        <button
+          type="button"
+          onClick={() => setSide('BUY')}
+          className={`flex-1 px-4 py-2 border text-sm font-medium transition-colors ${
+            side === 'BUY' 
+              ? 'bg-green-600 text-white border-green-600' 
+              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+          } rounded-l-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500`}
+        >
+          Buy
+        </button>
+        <button
+          type="button"
+          onClick={() => setSide('SELL')}
+          className={`flex-1 px-4 py-2 border text-sm font-medium transition-colors ml-2 ${
+            side === 'SELL' 
+              ? 'bg-red-600 text-white border-red-600' 
+              : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+          } rounded-r-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500`}
+        >
+          Sell
+        </button>
       </div>
 
       {/* Submit Button */}
@@ -183,16 +259,20 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice }) => {
         type="submit"
         onClick={handleSubmit}
         disabled={isLoading}
-        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400 dark:disabled:bg-gray-500"
+        className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 dark:disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? 'Placing Order...' : 'Place Order'}
       </button>
 
       {/* Messages */}
       {message && (
-        <p className={`mt-3 text-sm ${message.startsWith('Success:') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+        <div className={`mt-4 p-3 rounded-md text-sm ${
+          message.startsWith('Success:') 
+            ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800' 
+            : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
+        }`}>
           {message}
-        </p>
+        </div>
       )}
     </div>
   );
