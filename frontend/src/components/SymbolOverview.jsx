@@ -28,8 +28,9 @@ const formatNumber = (value, symbol = '') => {
 const ClickablePrice = ({ price, onPriceClick, children, className, symbol }) => {
   const [isClicked, setIsClicked] = useState(false);
 
-  const handleClick = () => {
+  const handleClick = (event) => { // Add event parameter
     if (typeof onPriceClick === 'function' && price !== undefined && price !== null) {
+      event.stopPropagation(); // Stop the event from bubbling up
       setIsClicked(true);
       onPriceClick(parseFloat(price), symbol);
       // Reset the clicked state after a short delay

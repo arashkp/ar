@@ -3,6 +3,8 @@ import { getMarketOverview } from '../api/market';
 import SymbolOverview from '../components/SymbolOverview.jsx';
 import OrderEntryForm from '../components/OrderEntryForm.jsx'; // Import OrderEntryForm
 
+//const MOCK_MARKET_OVERVIEW_DATA = []
+
 const DashboardPage = () => {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,7 +26,7 @@ const DashboardPage = () => {
       }
       setError(null);
       
-      const result = await getMarketOverview(); // result is expected to be an array
+      const result = await getMarketOverview(); // result is expected to be an array | MOCK_MARKET_OVERVIEW_DATA;
       if (result && Array.isArray(result)) {
         setData(result); // Store the array directly
         // Set an initial selected symbol (e.g., the first one from the list)

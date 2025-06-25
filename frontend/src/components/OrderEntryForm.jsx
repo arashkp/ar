@@ -14,33 +14,54 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState(''); // For success/error messages
 
-  // Debug log for props
-  console.log('OrderEntryForm props:', { selectedSymbol, clickedPrice, side, predefinedVolumeUSDT });
-
   // Effect to update symbol from prop
   useEffect(() => {
     if (selectedSymbol) {
       setSymbol(selectedSymbol);
+    } else {
+      setSymbol(''); // Handle case where selectedSymbol might become null or undefined
     }
   }, [selectedSymbol]);
 
   // Effect to update price and amount from clickedPrice
   useEffect(() => {
     if (clickedPrice !== undefined && clickedPrice !== null) {
-      const pricePrecision = getSymbolPrecision(symbol);
-      const formattedPrice = parseFloat(clickedPrice).toFixed(pricePrecision);
-      setPrice(formattedPrice);
-      // Also set amount based on predefined volume
-      const numPrice = parseFloat(formattedPrice);
-      const numPredefinedVolume = parseFloat(safePredefinedVolume);
-      if (numPrice > 0 && numPredefinedVolume > 0) {
-        const amountPrecision = getAmountPrecision(symbol);
-        const rawAmount = numPredefinedVolume / numPrice;
-        const flooredAmount = floorToPrecision(rawAmount, amountPrecision);
-        setAmount(flooredAmount.toFixed(amountPrecision));
+      if (!symbol) {
+        return;
+      }
+
+      try {
+        const pricePrecision = getSymbolPrecision(symbol);
+
+        const parsedClickedPrice = parseFloat(clickedPrice);
+        if (isNaN(parsedClickedPrice)) {
+          setPrice(''); // Clear price if NaN
+          setAmount(''); // Clear amount if price is NaN
+          return;
+        }
+        const formattedPrice = parsedClickedPrice.toFixed(pricePrecision);
+        setPrice(formattedPrice);
+
+        // Also set amount based on predefined volume
+        const numPrice = parseFloat(formattedPrice); // Use the formatted price for consistency
+        const numPredefinedVolume = parseFloat(safePredefinedVolume);
+
+        if (numPrice > 0 && numPredefinedVolume > 0) {
+          const amountPrecision = getAmountPrecision(symbol);
+          const rawAmount = numPredefinedVolume / numPrice;
+          const flooredAmount = floorToPrecision(rawAmount, amountPrecision);
+          const finalAmount = flooredAmount.toFixed(amountPrecision);
+          setAmount(finalAmount);
+        } else {
+          setAmount('');
+        }
+      } catch (error) {
+        // Potentially clear fields or show an error state
+        setPrice('');
+        setAmount('');
       }
     }
-  }, [clickedPrice, safePredefinedVolume, symbol]);
+  }, [clickedPrice, safePredefinedVolume, symbol]); // `symbol` here is the local state
 
   // Helper to get precision for price and amount
   const getSymbolPrecision = (symbol) => {
