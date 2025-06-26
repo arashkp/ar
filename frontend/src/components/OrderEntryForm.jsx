@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { placeOrder } from '../api/orders'; // Assuming this path is correct
 
+const EXCHANGES = ['MEXC', 'Bitget', 'Bitunix'];
+
 const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefinedVolumeUSDT, setPredefinedVolumeUSDT }) => {
   // Defensive fallback for undefined props
   const safePredefinedVolume = predefinedVolumeUSDT !== undefined && predefinedVolumeUSDT !== null ? predefinedVolumeUSDT : '100';
@@ -9,6 +11,7 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
   const [price, setPrice] = useState(''); // For LIMIT orders
   const [amount, setAmount] = useState(''); // Amount in base asset
   const [type, setType] = useState('LIMIT'); // 'LIMIT' or 'MARKET'
+  const [selectedExchange, setSelectedExchange] = useState(EXCHANGES[0]); // Default to MEXC
 
   // State for API interaction
   const [isLoading, setIsLoading] = useState(false);
@@ -123,6 +126,12 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
     setMessage('');
     setIsLoading(true);
 
+    if (selectedExchange !== 'MEXC') {
+      setMessage(`Error: Exchange ${selectedExchange} is not yet implemented.`);
+      setIsLoading(false);
+      return;
+    }
+
     const orderDetails = {
       symbol,
       side,
@@ -159,6 +168,28 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
       <h2 className="text-xl font-semibold mb-6 text-gray-800 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-3">
         Place Order
       </h2>
+
+      {/* Exchange Selector */}
+      <div className="mb-4 flex justify-center">
+        {EXCHANGES.map((exchange) => (
+          <button
+            key={exchange}
+            type="button"
+            onClick={() => setSelectedExchange(exchange)}
+            className={`flex-1 px-4 py-2 border text-sm font-medium transition-colors ${
+              selectedExchange === exchange
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+            } ${
+              EXCHANGES.indexOf(exchange) === 0 ? 'rounded-l-md' : ''
+            } ${
+              EXCHANGES.indexOf(exchange) === EXCHANGES.length - 1 ? 'rounded-r-md' : 'border-r-0'
+            } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+          >
+            {exchange}
+          </button>
+        ))}
+      </div>
 
       {/* Symbol Display (no label, styled) */}
       {symbol && (
