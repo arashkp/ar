@@ -101,7 +101,8 @@ const SymbolOverview = ({ symbolData, onPriceClick }) => {
     sma_300, 
     atr_14,
     support_levels = [],
-    resistance_levels = []
+    resistance_levels = [],
+    amount
   } = symbolData;
 
   // Gather all levels (support, resistance, EMAs, SMAs, etc.)
@@ -160,6 +161,14 @@ const SymbolOverview = ({ symbolData, onPriceClick }) => {
             <span className="text-xs ml-2 italic">{level.label}</span>
           </div>
         ))}
+        {amount && current_price && (
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-center">
+            Actual: $
+            <span className="font-mono">
+              {(parseFloat(amount) * parseFloat(current_price)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

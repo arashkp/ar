@@ -74,9 +74,10 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
 
   // Helper to get amount precision (BTC: 8, others: same as price precision)
   const getAmountPrecision = (symbol) => {
-    if (!symbol) return 8;
-    if (symbol.includes('BTC')) return 8;
-    return getSymbolPrecision(symbol);
+    if (symbol.includes('DOGE') || symbol.includes('POPCAT')) return 1;
+    if (symbol.includes('BTC')) return 6;
+    if (symbol.includes('ETH')) return 4;
+    return 3;
   };
 
   // Helper to floor a number to a given precision
@@ -239,11 +240,11 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 text-center"
         />
         {/* Actual amount label */}
-        {amount && (
+        {amount && price && (
           <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-center">
             Actual: $
             <span className="font-mono">
-              {Number(floorToPrecision(amount, 2)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+              {(parseFloat(amount) * parseFloat(price)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </span>
           </div>
         )}
