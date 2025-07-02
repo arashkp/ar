@@ -1,7 +1,11 @@
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import warnings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.routers import exchange, trades, market_overview, orders, investment # Added investment router
+from src.routers import exchange, trades, market_overview, orders, investment  # Added investment router
 from src.database.session import create_db_and_tables  # For DB initialization
 
 # Suppress the specific UserWarning from pandas_ta regarding pkg_resources
@@ -22,6 +26,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()  # Creates tables if they don't exist
@@ -32,7 +37,7 @@ app.include_router(exchange.router)
 app.include_router(trades.router)  # Added trades router
 app.include_router(market_overview.router, prefix="/market", tags=["market"])
 app.include_router(orders.router)  # Added orders router, prefix is in orders.py
-app.include_router(investment.router) # Added investment router, prefix is in investment.py
+app.include_router(investment.router)  # Added investment router, prefix is in investment.py
 
 
 @app.get("/health")

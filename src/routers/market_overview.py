@@ -194,6 +194,17 @@ class MarketOverviewItem(BaseModel):
     atr_14: float | None = None
     support_levels: List[LevelItem]
     resistance_levels: List[LevelItem]
+    # DCA Analysis Fields
+    dca_signal: str | None = None  # "strong_buy", "buy", "hold", "wait", "avoid"
+    dca_confidence: float | None = None  # 0-100
+    dca_amount_multiplier: float | None = None  # 0.5-2.0x
+    dca_reasoning: List[str] | None = None
+    rsi_14: float | None = None
+    volume_ratio: float | None = None  # Current volume vs 20-period EMA
+    volume_ratio_avg: float | None = None  # 5-period average of volume ratios
+    vol_price_ratio: float | None = None  # Volume ratio * abs(price_change)
+    volume_status: str | None = None  # "very_high", "high", "normal", "low"
+    market_sentiment: str | None = None  # "bullish", "bearish", "neutral"
 
 
 SYMBOL_CONFIG = [
@@ -610,7 +621,15 @@ async def get_market_overview():
                         symbol=symbol, current_price=current_price,
                         ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=formatted_atr_14,
                         support_levels=support_level_items,
-                        resistance_levels=resistance_level_items
+                        resistance_levels=resistance_level_items,
+                        # DCA Analysis (minimal data available)
+                        dca_signal="hold",
+                        dca_confidence=50.0,
+                        dca_amount_multiplier=1.0,
+                        dca_reasoning=["Insufficient data for full analysis"],
+                        rsi_14=None,
+                        volume_ratio=None,
+                        market_sentiment="neutral"
                     ))
                     continue
 
@@ -631,6 +650,48 @@ async def get_market_overview():
                 raw_sma_300 = df['sma_300'].iloc[-1]
                 formatted_sma_300 = format_value(raw_sma_300, price_precision) if pd.notna(raw_sma_300) else None
 
+                # Calculate additional indicators for DCA analysis
+                df['rsi_14'] = df.ta.rsi(length=14)
+                
+                # Enhanced Volume Analysis (EMA-based)
+                df['volume_ema_20'] = df['volume'].ewm(span=20, adjust=False).mean()
+                df['volume_ratio'] = df['volume'] / df['volume_ema_20']
+                
+                # Volume ratio trend (5-period average)
+                df['volume_ratio_avg'] = df['volume_ratio'].rolling(window=5).mean()
+                
+                # Volume-price correlation
+                df['price_change'] = df['close'].pct_change()
+                df['vol_price_ratio'] = df['volume_ratio'] * df['price_change'].abs()
+                
+                # Volume status classification
+                def volume_level(vr):
+                    if vr > 2:
+                        return "very_high"
+                    elif vr > 1.2:
+                        return "high"
+                    elif vr < 0.5:
+                        return "low"
+                    else:
+                        return "normal"
+                
+                df['volume_status'] = df['volume_ratio'].apply(volume_level)
+                
+                # Get latest values
+                rsi_14 = df['rsi_14'].iloc[-1] if pd.notna(df['rsi_14'].iloc[-1]) else 50.0
+                volume_ratio = df['volume_ratio'].iloc[-1] if pd.notna(df['volume_ratio'].iloc[-1]) else 1.0
+                volume_ratio_avg = df['volume_ratio_avg'].iloc[-1] if pd.notna(df['volume_ratio_avg'].iloc[-1]) else 1.0
+                vol_price_ratio = df['vol_price_ratio'].iloc[-1] if pd.notna(df['vol_price_ratio'].iloc[-1]) else 0.0
+                volume_status = df['volume_status'].iloc[-1] if pd.notna(df['volume_status'].iloc[-1]) else "normal"
+                
+                # Perform DCA analysis
+                dca_analysis = _analyze_dca_opportunity(
+                    df, current_price_raw, formatted_atr_14, 
+                    formatted_ema_21, formatted_sma_30, 
+                    support_level_items, rsi_14, volume_ratio, 
+                    volume_ratio_avg, vol_price_ratio, volume_status
+                )
+
                 results.append(MarketOverviewItem(
                     symbol=symbol, current_price=current_price,
                     ema_21=formatted_ema_21,
@@ -640,7 +701,18 @@ async def get_market_overview():
                     sma_300=formatted_sma_300,
                     atr_14=formatted_atr_14,
                     support_levels=support_level_items,
-                    resistance_levels=resistance_level_items
+                    resistance_levels=resistance_level_items,
+                    # DCA Analysis
+                    dca_signal=dca_analysis['signal'],
+                    dca_confidence=dca_analysis['confidence'],
+                    dca_amount_multiplier=dca_analysis['amount_multiplier'],
+                    dca_reasoning=dca_analysis['reasoning'],
+                    rsi_14=format_value(rsi_14, 2),
+                    volume_ratio=format_value(volume_ratio, 2),
+                    volume_ratio_avg=format_value(volume_ratio_avg, 2),
+                    vol_price_ratio=format_value(vol_price_ratio, 3),
+                    volume_status=volume_status,
+                    market_sentiment=dca_analysis['sentiment']
                 ))
 
             except ccxt.NetworkError as e:
@@ -649,21 +721,54 @@ async def get_market_overview():
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
-                                       support_levels=[], resistance_levels=[]))
+                                       support_levels=[], resistance_levels=[],
+                                       # DCA Analysis (error state)
+                                       dca_signal="wait",
+                                       dca_confidence=0.0,
+                                       dca_amount_multiplier=0.5,
+                                       dca_reasoning=["Network error - unable to analyze"],
+                                       rsi_14=None,
+                                       volume_ratio=None,
+                                       volume_ratio_avg=None,
+                                       vol_price_ratio=None,
+                                       volume_status=None,
+                                       market_sentiment="neutral"))
             except ccxt.ExchangeError as e:
                 logger.error(f"Exchange error for {symbol} on {exchange_id}: {e}. Default data returned.")
                 formatted_current_price_on_error = format_value(0.0, 2)
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
-                                       support_levels=[], resistance_levels=[]))
+                                       support_levels=[], resistance_levels=[],
+                                       # DCA Analysis (error state)
+                                       dca_signal="wait",
+                                       dca_confidence=0.0,
+                                       dca_amount_multiplier=0.5,
+                                       dca_reasoning=["Exchange error - unable to analyze"],
+                                       rsi_14=None,
+                                       volume_ratio=None,
+                                       volume_ratio_avg=None,
+                                       vol_price_ratio=None,
+                                       volume_status=None,
+                                       market_sentiment="neutral"))
             except Exception as e:
                 logger.error(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}. Default data returned.")
                 formatted_current_price_on_error = format_value(0.0, 2)
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
-                                       support_levels=[], resistance_levels=[]))
+                                       support_levels=[], resistance_levels=[],
+                                       # DCA Analysis (error state)
+                                       dca_signal="wait",
+                                       dca_confidence=0.0,
+                                       dca_amount_multiplier=0.5,
+                                       dca_reasoning=["Unexpected error - unable to analyze"],
+                                       rsi_14=None,
+                                       volume_ratio=None,
+                                       volume_ratio_avg=None,
+                                       vol_price_ratio=None,
+                                       volume_status=None,
+                                       market_sentiment="neutral"))
 
     finally:
         for ex_id, ex_instance in active_exchanges.items():
@@ -678,3 +783,154 @@ async def get_market_overview():
         logger.error("Could not fetch any market data for the configured symbols.")
         raise HTTPException(status_code=500, detail="Could not fetch any market data for the configured symbols.")
     return results
+
+
+def _analyze_dca_opportunity(
+    df: pd.DataFrame,
+    current_price: float,
+    atr_14: float | None,
+    ema_21: float | None,
+    sma_30: float | None,
+    support_levels: List[LevelItem],
+    rsi_14: float,
+    volume_ratio: float,
+    volume_ratio_avg: float,
+    vol_price_ratio: float,
+    volume_status: str
+) -> dict:
+    """
+    Analyze DCA opportunity based on market conditions.
+    
+    Returns:
+        dict with signal, confidence, amount_multiplier, reasoning, and sentiment
+    """
+    reasoning = []
+    confidence = 50.0
+    signal = "hold"
+    amount_multiplier = 1.0
+    sentiment = "neutral"
+    
+    # RSI analysis
+    if rsi_14 < 30:
+        reasoning.append("RSI indicates oversold conditions")
+        confidence += 15
+        signal = "buy"
+        amount_multiplier = 1.2
+    elif rsi_14 < 40:
+        reasoning.append("RSI shows potential buying opportunity")
+        confidence += 10
+        signal = "buy"
+    elif rsi_14 > 70:
+        reasoning.append("RSI indicates overbought conditions")
+        confidence -= 20
+        signal = "wait"
+        amount_multiplier = 0.5
+    
+    # Trend analysis
+    if ema_21 and current_price > ema_21 * 1.02:
+        reasoning.append("Price above EMA21 - short-term uptrend")
+        confidence += 10
+    elif ema_21 and current_price < ema_21 * 0.98:
+        reasoning.append("Price below EMA21 - short-term downtrend")
+        confidence -= 15
+        signal = "wait"
+        amount_multiplier = 0.7
+    
+    if sma_30 and current_price > sma_30 * 1.05:
+        reasoning.append("Strong medium-term uptrend")
+        confidence += 10
+    elif sma_30 and current_price < sma_30 * 0.95:
+        reasoning.append("Medium-term downtrend")
+        confidence -= 10
+    
+    # Volatility analysis
+    if atr_14:
+        # Simple volatility check - if ATR is high relative to price
+        atr_percent = (atr_14 / current_price) * 100
+        if atr_percent > 5:  # High volatility
+            reasoning.append("High volatility - consider smaller position")
+            amount_multiplier *= 0.8
+        elif atr_percent < 1:  # Low volatility
+            reasoning.append("Low volatility - stable conditions")
+            confidence += 5
+    
+    # Support level analysis
+    if support_levels:
+        nearest_support = max([s.level for s in support_levels if s.level < current_price], default=0)
+        if nearest_support > 0:
+            distance_to_support = ((current_price - nearest_support) / current_price) * 100
+            if distance_to_support < 2:
+                reasoning.append("Price near strong support level")
+                confidence += 10
+                signal = "strong_buy"
+                amount_multiplier = 1.3
+            elif distance_to_support < 5:
+                reasoning.append("Price approaching support level")
+                confidence += 5
+    
+    # Enhanced Volume Analysis
+    if volume_status == "very_high":
+        reasoning.append("Very high volume - potential breakout/breakdown")
+        confidence += 15
+        if vol_price_ratio > 1.5:
+            reasoning.append("Volume confirms strong price movement")
+            confidence += 10
+            amount_multiplier = 1.4
+    elif volume_status == "high":
+        reasoning.append("High volume activity")
+        confidence += 10
+        if vol_price_ratio > 1.0:
+            reasoning.append("Volume supports price movement")
+            confidence += 5
+    elif volume_status == "low":
+        reasoning.append("Low volume - weak momentum")
+        confidence -= 10
+        amount_multiplier *= 0.8
+        if vol_price_ratio < 0.5:
+            reasoning.append("Price moving without volume support")
+            confidence -= 5
+    
+    # Volume trend analysis
+    if volume_ratio_avg > 1.3:
+        reasoning.append("Volume trend is increasing")
+        confidence += 5
+    elif volume_ratio_avg < 0.7:
+        reasoning.append("Volume trend is decreasing")
+        confidence -= 5
+    
+    # Volume-price divergence detection
+    if vol_price_ratio < 0.3 and abs(df['price_change'].iloc[-1]) > 0.02:
+        reasoning.append("Price moving without volume confirmation")
+        confidence -= 10
+        signal = "wait"
+    
+    # Determine final signal and confidence
+    if confidence >= 80:
+        signal = "strong_buy"
+        sentiment = "bullish"
+    elif confidence >= 60:
+        signal = "buy"
+        sentiment = "bullish"
+    elif confidence >= 40:
+        signal = "hold"
+        sentiment = "neutral"
+    elif confidence >= 20:
+        signal = "wait"
+        sentiment = "bearish"
+    else:
+        signal = "avoid"
+        sentiment = "bearish"
+    
+    # Clamp confidence to 0-100
+    confidence = max(0, min(100, confidence))
+    
+    # Clamp amount multiplier to 0.5-2.0
+    amount_multiplier = max(0.5, min(2.0, amount_multiplier))
+    
+    return {
+        'signal': signal,
+        'confidence': confidence,
+        'amount_multiplier': amount_multiplier,
+        'reasoning': reasoning,
+        'sentiment': sentiment
+    }
