@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FaRegCommentDots } from 'react-icons/fa';
 
 // Helper function to format numbers with thousand separators and proper precision
 const formatNumber = (value, symbol = '') => {
@@ -168,12 +169,20 @@ const SymbolOverview = ({ symbolData, onPriceClick, onSymbolClick }) => {
 
   // For display: resistance (red), price (highlighted), support (green)
   return (
-    <div 
-      className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col items-stretch border border-gray-200 dark:border-gray-700 hover:shadow-xl cursor-pointer transition-all duration-200"
-      onClick={handleSymbolClick}
-    >
+    <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-3 sm:p-4 flex flex-col items-stretch border border-gray-200 dark:border-gray-700 hover:shadow-xl cursor-pointer transition-all duration-200">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm sm:text-lg font-bold bg-gradient-to-r from-teal-500 to-blue-600 bg-clip-text text-transparent drop-shadow-sm truncate">{symbolName}</h2>
+        {/* Prompt Icon Button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); if (onSymbolClick) onSymbolClick(symbolData); }}
+          className="mr-2 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 focus:outline-none"
+          title="Show LLM Prompt"
+          tabIndex={0}
+        >
+          <FaRegCommentDots className="w-5 h-5 text-blue-500" />
+        </button>
+        <h2 className="text-sm sm:text-lg font-bold bg-gradient-to-r from-teal-500 to-blue-600 bg-clip-text text-transparent drop-shadow-sm truncate flex-1">
+          {symbolName}
+        </h2>
         
         {/* DCA Signal Badge */}
         {dca_signal && (
@@ -269,19 +278,6 @@ const SymbolOverview = ({ symbolData, onPriceClick, onSymbolClick }) => {
                     'text-gray-600 dark:text-gray-400'
                   }`}>
                     {volume_ratio_avg > 1.3 ? '↗️' : volume_ratio_avg < 0.7 ? '↘️' : '→'} {volume_ratio_avg.toFixed(2)}x
-                  </span>
-                </div>
-              )}
-              
-              {vol_price_ratio && (
-                <div className="hidden sm:flex justify-between items-center text-xs">
-                  <span className="text-gray-600 dark:text-gray-400">V-P:</span>
-                  <span className={`font-semibold ${
-                    vol_price_ratio > 1.0 ? 'text-green-600 dark:text-green-400' : 
-                    vol_price_ratio < 0.3 ? 'text-red-600 dark:text-red-400' : 
-                    'text-gray-600 dark:text-gray-400'
-                  }`}>
-                    {vol_price_ratio.toFixed(2)}
                   </span>
                 </div>
               )}

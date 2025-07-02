@@ -173,7 +173,7 @@ const DashboardPage = () => {
               </svg>
             </button>
             {/* Icon-only theme toggle */}
-            <ThemeToggleButton iconOnly />
+            <ThemeToggleButton iconOnly buttonClassName={`p-2 rounded-lg transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600`} />
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-4 text-center">
             Real-time market analysis with enhanced volume indicators and DCA strategy insights
@@ -245,6 +245,21 @@ const DashboardPage = () => {
           <p className="mt-1">Click on any price to automatically fill the order form</p>
           <p className="mt-1">Data updates in real-time from multiple exchanges</p>
           <p className="mt-1">Last updated: {new Date().toLocaleTimeString()}</p>
+        </div>
+
+        {/* Metrics Explained Section */}
+        <div className="w-full max-w-5xl mx-auto mt-8">
+          <details className="bg-gray-100 dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer select-none" closed>
+            <summary className="font-semibold text-lg text-gray-800 dark:text-gray-200 mb-2">Metrics Explained</summary>
+            <ul className="list-disc list-inside space-y-2 text-gray-700 dark:text-gray-300 text-sm mt-2">
+              <li><b>Vol:</b> <span>Relative trading volume compared to the recent average. <b>Ranges:</b> <span className="text-green-600">very high</span> (&gt;2.0x), <span className="text-blue-600">high</span> (&gt;1.2x), <span className="text-gray-600">normal</span> (0.5x-1.2x), <span className="text-red-600">low</span> (&lt;0.5x).</span></li>
+              <li><b>Trend:</b> <span>5-period average of volume ratio. <b>Ranges:</b> <span className="text-green-600">Uptrend</span> (&gt;1.3x), <span className="text-red-600">Downtrend</span> (&lt;0.7x), <span className="text-gray-600">Sideways</span> (0.7x-1.3x).</span></li>
+              <li><b>RSI:</b> <span>Relative Strength Index (14-period). <b>Ranges:</b> <span className="text-green-600">Oversold</span> (&lt;30), <span className="text-blue-600">Potential Buy</span> (30-40), <span className="text-gray-600">Neutral</span> (40-70), <span className="text-red-600">Overbought</span> (&gt;70).</span></li>
+              <li><b>Conf:</b> <span>Confidence score for the DCA signal (0-100%).</span></li>
+              <li><b>Amt:</b> <span>DCA amount multiplier (e.g., 1.10x means increase position size by 10%).</span></li>
+              <li><b>Sent:</b> <span>Market sentiment: <span className="text-green-600">Bullish</span>, <span className="text-red-600">Bearish</span>, or <span className="text-gray-600">Neutral</span>.</span></li>
+            </ul>
+          </details>
         </div>
       </div>
 

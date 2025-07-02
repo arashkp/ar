@@ -800,9 +800,7 @@ def _analyze_dca_opportunity(
 ) -> dict:
     """
     Analyze DCA opportunity based on market conditions.
-    
-    Returns:
-        dict with signal, confidence, amount_multiplier, reasoning, and sentiment
+    Returns: dict with signal, confidence, amount_multiplier, reasoning, and sentiment
     """
     reasoning = []
     confidence = 50.0
@@ -815,7 +813,7 @@ def _analyze_dca_opportunity(
         reasoning.append("RSI indicates oversold conditions")
         confidence += 15
         signal = "buy"
-        amount_multiplier = 1.2
+        amount_multiplier += 0.1
     elif rsi_14 < 40:
         reasoning.append("RSI shows potential buying opportunity")
         confidence += 10
@@ -824,7 +822,7 @@ def _analyze_dca_opportunity(
         reasoning.append("RSI indicates overbought conditions")
         confidence -= 20
         signal = "wait"
-        amount_multiplier = 0.5
+        amount_multiplier -= 0.1
     
     # Trend analysis
     if ema_21 and current_price > ema_21 * 1.02:
@@ -834,7 +832,7 @@ def _analyze_dca_opportunity(
         reasoning.append("Price below EMA21 - short-term downtrend")
         confidence -= 15
         signal = "wait"
-        amount_multiplier = 0.7
+        amount_multiplier -= 0.1
     
     if sma_30 and current_price > sma_30 * 1.05:
         reasoning.append("Strong medium-term uptrend")
@@ -845,11 +843,10 @@ def _analyze_dca_opportunity(
     
     # Volatility analysis
     if atr_14:
-        # Simple volatility check - if ATR is high relative to price
         atr_percent = (atr_14 / current_price) * 100
         if atr_percent > 5:  # High volatility
             reasoning.append("High volatility - consider smaller position")
-            amount_multiplier *= 0.8
+            amount_multiplier -= 0.1
         elif atr_percent < 1:  # Low volatility
             reasoning.append("Low volatility - stable conditions")
             confidence += 5
@@ -863,29 +860,31 @@ def _analyze_dca_opportunity(
                 reasoning.append("Price near strong support level")
                 confidence += 10
                 signal = "strong_buy"
-                amount_multiplier = 1.3
+                amount_multiplier += 0.2
             elif distance_to_support < 5:
                 reasoning.append("Price approaching support level")
                 confidence += 5
+                amount_multiplier += 0.1
     
     # Enhanced Volume Analysis
     if volume_status == "very_high":
         reasoning.append("Very high volume - potential breakout/breakdown")
         confidence += 15
+        amount_multiplier += 0.2
         if vol_price_ratio > 1.5:
             reasoning.append("Volume confirms strong price movement")
             confidence += 10
-            amount_multiplier = 1.4
     elif volume_status == "high":
         reasoning.append("High volume activity")
         confidence += 10
+        amount_multiplier += 0.1
         if vol_price_ratio > 1.0:
             reasoning.append("Volume supports price movement")
             confidence += 5
     elif volume_status == "low":
         reasoning.append("Low volume - weak momentum")
         confidence -= 10
-        amount_multiplier *= 0.8
+        amount_multiplier -= 0.1
         if vol_price_ratio < 0.5:
             reasoning.append("Price moving without volume support")
             confidence -= 5
@@ -923,7 +922,6 @@ def _analyze_dca_opportunity(
     
     # Clamp confidence to 0-100
     confidence = max(0, min(100, confidence))
-    
     # Clamp amount multiplier to 0.5-2.0
     amount_multiplier = max(0.5, min(2.0, amount_multiplier))
     
