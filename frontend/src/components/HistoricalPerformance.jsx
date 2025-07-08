@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import {
   getHistoricalPerformance,
-  formatPerformance,
   getPerformanceColor,
   getTimeframeDisplayName
 } from '../api/historical';
 
-// Helper for price formatting with thousand separators and precision
+// Helper for price formatting with a thousand separators and precision
 const getSymbolPrecision = (symbol) => {
   if (!symbol) return 2;
   if (symbol.includes('DOGE') || symbol.includes('POPCAT')) return 4;
@@ -31,7 +30,7 @@ const formatPercent = (value) => {
 const TIMEFRAMES = ['7d', '14d', '1m', '3m', '6m', 'ytd', '1y'];
 
 const HistoricalPerformance = () => {
-  const { isDark } = useTheme();
+  const { } = useTheme();
   const [performanceData, setPerformanceData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -115,22 +114,18 @@ const HistoricalPerformance = () => {
     
     // Add gray background for 1y column
     const is1yColumn = timeframe === '1y';
-    const cellBgClass = is1yColumn 
-      ? (isDark ? 'bg-gray-800' : 'bg-gray-100') 
-      : (isDark ? 'bg-gray-900' : '');
-    
     return (
-      <td key={timeframe} className={`px-2 py-2 text-center align-middle whitespace-nowrap group ${cellBgClass}`}>
+      <td key={timeframe} className={`px-2 py-2 text-center align-middle whitespace-nowrap group`}>
         <div className={`text-sm font-semibold ${getPerformanceColor(value)}`}>{formatPercent(value)}</div>
         <div className="flex flex-col items-center gap-0.5">
-          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`} title={`High: ${formatPrice(high, symbol)}`}>H: {formatPrice(high, symbol)}
+          <span className={`text-xs text-gray-500`} title={`High: ${formatPrice(high, symbol)}`}>H: {formatPrice(high, symbol)}
             {pctFromHigh != null && (
               <span className="ml-1 text-[10px] font-normal" title={`Current is -${Math.abs(pctFromHigh).toFixed(1)}% below high`}>
                 (-{Math.abs(pctFromHigh).toFixed(1)}%)
               </span>
             )}
           </span>
-          <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`} title={`Low: ${formatPrice(low, symbol)}`}>L: {formatPrice(low, symbol)}
+          <span className={`text-xs text-gray-500`} title={`Low: ${formatPrice(low, symbol)}`}>L: {formatPrice(low, symbol)}
             {pctFromLow != null && (
               <span className="ml-1 text-[10px] font-normal" title={`Current is +${Math.abs(pctFromLow).toFixed(1)}% above low`}>
                 (+{Math.abs(pctFromLow).toFixed(1)}%)
@@ -143,14 +138,14 @@ const HistoricalPerformance = () => {
   };
 
   return (
-    <div className="space-y-4">
-      <div className={`${isDark ? 'bg-blue-950' : 'bg-blue-50'} rounded-lg shadow-md overflow-hidden`}>
-        <div className={`flex items-center justify-between px-6 py-4 border-b ${isDark ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h3 className={`text-lg font-semibold ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>Historical Performance</h3>
+    <div className="space-y-4 mt-8">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-200">Historical Performance</h3>
           <button
             onClick={fetchPerformanceData}
             disabled={loading}
-            className={`p-2 rounded-full transition-colors ${loading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            className={`p-2 rounded-full bg-transparent transition-colors ${loading ? 'text-gray-500 cursor-not-allowed' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
             title="Refresh Data"
             aria-label="Refresh Data"
           >
@@ -166,14 +161,14 @@ const HistoricalPerformance = () => {
           </button>
         </div>
         {error && (
-          <div className={`px-6 py-2 text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>{error}</div>
+          <div className={`px-6 py-2 text-sm text-red-600`}>{error}</div>
         )}
         <div className="overflow-x-auto">
-          <table className={`min-w-full text-xs md:text-sm ${isDark ? 'bg-gray-900' : 'bg-white'}`}> 
-            <thead className={`${isDark ? 'bg-gray-800' : 'bg-gray-100'} sticky top-0 z-10 shadow-sm`}>
+          <table className="min-w-full text-xs md:text-sm bg-white dark:bg-gray-800">
+            <thead className="dark:bg-gray-700 sticky top-0 z-10 shadow-sm">
               <tr>
                 <th 
-                  className={`px-2 py-3 text-left font-bold uppercase tracking-wider ${isDark ? 'text-gray-300' : 'text-gray-500'} cursor-pointer hover:${isDark ? 'bg-gray-700' : 'bg-gray-200'} transition-colors`}
+                  className="px-2 py-3 text-left font-bold uppercase tracking-wider text-gray-500 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                   onClick={() => handleSort('symbol')}
                 >
                   <div className="flex items-center gap-1">
@@ -183,7 +178,7 @@ const HistoricalPerformance = () => {
                 {TIMEFRAMES.map(tf => (
                   <th 
                     key={tf} 
-                    className={`px-2 py-3 text-center font-bold uppercase tracking-wider ${isDark ? 'text-gray-300' : 'text-gray-500'} cursor-pointer hover:${isDark ? 'bg-gray-700' : 'bg-gray-200'} transition-colors ${tf === '1y' ? (isDark ? 'bg-gray-700' : 'bg-gray-200') : ''}`}
+                    className={`px-2 py-3 text-center font-bold uppercase tracking-wider text-gray-500 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors`}
                     onClick={() => handleSort(tf)}
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -193,10 +188,10 @@ const HistoricalPerformance = () => {
                 ))}
               </tr>
             </thead>
-            <tbody className={`${isDark ? 'bg-gray-900' : 'bg-white'} divide-y ${isDark ? 'divide-gray-700' : 'divide-gray-200'}`}>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {sortedData.map(item => (
-                <tr key={item.symbol} className={`hover:${isDark ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                  <td className={`px-2 py-2 font-medium ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>{item.symbol}</td>
+                <tr key={item.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <td className="px-2 py-2 font-medium text-gray-900 dark:text-gray-200">{item.symbol}</td>
                   {TIMEFRAMES.map(tf => renderTimeframeCell(item, tf))}
                 </tr>
               ))}
@@ -204,7 +199,7 @@ const HistoricalPerformance = () => {
           </table>
         </div>
         {performanceData.length > 0 && (
-          <div className={`px-6 py-2 text-xs text-right ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Last updated: {new Date(lastUpdated).toLocaleTimeString()}</div>
+          <div className={`px-6 py-2 text-xs text-right text-gray-500`}>Last updated: {new Date(lastUpdated).toLocaleTimeString()}</div>
         )}
       </div>
     </div>

@@ -11,13 +11,13 @@ def ensure_cache_directory_exists(cache_dir: str):
         os.makedirs(cache_dir)
         print(f"Cache directory created: {cache_dir}") # For now, simple print, consider logging
 
-def get_cache_filepath(cache_dir: str, symbol: str, timeframe: str = '1h') -> str:
+def get_cache_filepath(cache_dir: str, symbol: str, timeframe: str = '4h') -> str:
     """Generates the filepath for a symbol's cache CSV file with timeframe."""
     # Sanitize symbol name for filename (e.g., replace '/' with '_')
     safe_symbol_filename = symbol.replace('/', '_') + f"_{timeframe}.csv"
     return os.path.join(cache_dir, safe_symbol_filename)
 
-def read_ohlcv_from_cache(cache_dir: str, symbol: str, timeframe: str = '1h') -> Optional[pd.DataFrame]:
+def read_ohlcv_from_cache(cache_dir: str, symbol: str, timeframe: str = '4h') -> Optional[pd.DataFrame]:
     """
     Reads OHLCV data from a CSV cache file for a given symbol and timeframe.
     Returns a DataFrame if the cache file exists and is valid, otherwise None.
@@ -63,7 +63,7 @@ def read_ohlcv_from_cache(cache_dir: str, symbol: str, timeframe: str = '1h') ->
              os.remove(filepath) # Basic error handling: remove corrupt file
         return None
 
-def write_ohlcv_to_cache(cache_dir: str, symbol: str, data: pd.DataFrame, timeframe: str = '1h'):
+def write_ohlcv_to_cache(cache_dir: str, symbol: str, data: pd.DataFrame, timeframe: str = '4h'):
     """
     Writes OHLCV data (DataFrame) to a CSV cache file for a given symbol and timeframe.
     The DataFrame should contain columns: ['timestamp', 'open', 'high', 'low', 'close', 'volume'].

@@ -1,12 +1,12 @@
 from dotenv import load_dotenv
-
-load_dotenv()
-
 import warnings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.routers import exchange, trades, market_overview, orders, investment, historical_performance  # Added historical_performance router
+from src.routers import exchange, trades, market_overview, orders, investment, \
+    historical_performance  # Added historical_performance router
 from src.database.session import create_db_and_tables  # For DB initialization
+
+load_dotenv()
 
 # Suppress the specific UserWarning from pandas_ta regarding pkg_resources
 warnings.filterwarnings(

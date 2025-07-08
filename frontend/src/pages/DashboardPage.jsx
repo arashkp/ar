@@ -71,13 +71,6 @@ const DashboardPage = () => {
     if (sideFromClick) setSide(sideFromClick.toUpperCase());
   };
 
-  // Handler for when a symbol overview card is clicked (to set it as selected)
-  const handleSymbolSelect = (symbolTicker) => {
-    setSelectedSymbol(symbolTicker);
-    setClickedPrice(null); // Reset clicked price when a new symbol is selected
-    console.log(`Symbol selected: ${symbolTicker}`); // For debugging
-  };
-
   // Handler for when a symbol card is clicked to show LLM prompt
   const handleSymbolClick = (symbolData) => {
     setSelectedSymbolData(symbolData);
@@ -153,7 +146,7 @@ const DashboardPage = () => {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="p-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 hover:bg-blue-600 hover:text-white rounded transition-colors disabled:opacity-50"
+              className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-600 hover:text-white rounded-lg transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -252,16 +245,64 @@ const DashboardPage = () => {
         </div>
 
         {/* Metrics Explained Section */}
-        <div className="w-full max-w-5xl mx-auto mt-8">
-          <details className="bg-gray-100 dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer select-none" closed>
-            <summary className="font-semibold text-lg text-gray-800 dark:text-gray-200 mb-2">Metrics Explained</summary>
-            <ul className="list-disc list-inside space-y-2 text-gray-700 dark:text-gray-300 text-sm mt-2">
-              <li><b>Vol:</b> <span>Relative trading volume compared to the recent average. <b>Ranges:</b> <span className="text-green-600">very high</span> (&gt;2.0x), <span className="text-blue-600">high</span> (&gt;1.2x), <span className="text-gray-600">normal</span> (0.5x-1.2x), <span className="text-red-600">low</span> (&lt;0.5x).</span></li>
-              <li><b>Trend:</b> <span>5-period average of volume ratio. <b>Ranges:</b> <span className="text-green-600">Uptrend</span> (&gt;1.3x), <span className="text-red-600">Downtrend</span> (&lt;0.7x), <span className="text-gray-600">Sideways</span> (0.7x-1.3x).</span></li>
-              <li><b>RSI:</b> <span>Relative Strength Index (14-period). <b>Ranges:</b> <span className="text-green-600">Oversold</span> (&lt;30), <span className="text-blue-600">Potential Buy</span> (30-40), <span className="text-gray-600">Neutral</span> (40-70), <span className="text-red-600">Overbought</span> (&gt;70).</span></li>
-              <li><b>Conf:</b> <span>Confidence score for the DCA signal (0-100%).</span></li>
-              <li><b>Amt:</b> <span>DCA amount multiplier (e.g., 1.10x means increase position size by 10%).</span></li>
-              <li><b>Sent:</b> <span>Market sentiment: <span className="text-green-600">Bullish</span>, <span className="text-red-600">Bearish</span>, or <span className="text-gray-600">Neutral</span>.</span></li>
+        <div className="w-full mt-8">
+          <details className="bg-gray-100 dark:bg-gray-800 rounded-lg shadow p-4 cursor-pointer select-none w-full" closed>
+            <summary className="font-semibold text-lg text-gray-800 dark:text-gray-200 mb-4">Metrics Explained</summary>
+            <ul className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 list-disc list-inside text-gray-700 dark:text-gray-300 text-sm mt-2 w-full">
+              <li className="pl-2">
+                <b>Vol:</b>
+                <div className="ml-4">
+                  Relative trading volume compared to the recent average.<br/>
+                  <b>Ranges:</b><br/>
+                  <span className="ml-2">- <span className="text-green-600">very high</span> (&gt;2.0x)</span><br/>
+                  <span className="ml-2">- <span className="text-blue-600">high</span> (&gt;1.2x)</span><br/>
+                  <span className="ml-2">- <span className="text-gray-600">normal</span> (0.5x-1.2x)</span><br/>
+                  <span className="ml-2">- <span className="text-red-600">low</span> (&lt;0.5x)</span>
+                </div>
+              </li>
+              <li className="pl-2">
+                <b>Trend:</b>
+                <div className="ml-4">
+                  5-period average of volume ratio.<br/>
+                  <b>Ranges:</b><br/>
+                  <span className="ml-2">- <span className="text-green-600">Uptrend</span> (&gt;1.3x)</span><br/>
+                  <span className="ml-2">- <span className="text-red-600">Downtrend</span> (&lt;0.7x)</span><br/>
+                  <span className="ml-2">- <span className="text-gray-600">Sideways</span> (0.7x-1.3x)</span>
+                </div>
+              </li>
+              <li className="pl-2">
+                <b>RSI:</b>
+                <div className="ml-4">
+                  Relative Strength Index (14-period).<br/>
+                  <b>Ranges:</b><br/>
+                  <span className="ml-2">- <span className="text-green-600">Oversold</span> (&lt;30)</span><br/>
+                  <span className="ml-2">- <span className="text-blue-600">Potential Buy</span> (30-40)</span><br/>
+                  <span className="ml-2">- <span className="text-gray-600">Neutral</span> (40-70)</span><br/>
+                  <span className="ml-2">- <span className="text-red-600">Overbought</span> (&gt;70)</span>
+                </div>
+              </li>
+              <li className="pl-2">
+                <b>Conf:</b>
+                <div className="ml-4">
+                  Confidence score for the DCA signal (0-100%).
+                </div>
+              </li>
+              <li className="pl-2">
+                <b>Amt:</b>
+                <div className="ml-4">
+                  DCA amount multiplier.<br/>
+                  <span className="ml-2">e.g., 1.10x means increase position size by 10%.</span>
+                </div>
+              </li>
+              <li className="pl-2">
+                <b>Sent:</b>
+                <div className="ml-4">
+                  Market sentiment:<br/>
+                  <span className="ml-2">- <span className="text-green-600">Bullish</span></span><br/>
+                  <span className="ml-2">- <span className="text-red-600">Bearish</span></span><br/>
+                  <span className="ml-2">- <span className="text-gray-600">Neutral</span></span>
+                </div>
+              </li>
             </ul>
           </details>
         </div>

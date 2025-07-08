@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FaRegCommentDots } from 'react-icons/fa';
 
-// Helper function to format numbers with thousand separators and proper precision
+// Helper function to format numbers with a thousand separators and proper precision
 const formatNumber = (value, symbol = '') => {
   if (value === undefined || value === null) return 'N/A';
   
@@ -18,7 +18,7 @@ const formatNumber = (value, symbol = '') => {
   const num = parseFloat(value);
   if (isNaN(num)) return 'N/A';
   
-  // Format with thousand separators and proper precision
+  // Format with a thousand separators and proper precision
   return num.toLocaleString('en-US', {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision
@@ -174,7 +174,7 @@ const SymbolOverview = ({ symbolData, onPriceClick, onSymbolClick }) => {
         {/* Prompt Icon Button */}
         <button
           onClick={(e) => { e.stopPropagation(); if (onSymbolClick) onSymbolClick(symbolData); }}
-          className="mr-2 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 focus:outline-none"
+          className="mr-2 p-1 rounded-full bg-transparent hover:bg-blue-100 dark:hover:bg-blue-900/40 focus:outline-none"
           title="Show LLM Prompt"
           tabIndex={0}
         >

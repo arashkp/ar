@@ -8,7 +8,7 @@ from src.utils.exchange_helpers import (
 )
 from src.utils.error_handlers import handle_ccxt_exception, handle_generic_exception
 
-async def fetch_ohlcv(exchange_id: str, symbol: str, timeframe: str = '1h', limit: int = 100, api_key: str = None, api_secret: str = None):
+async def fetch_ohlcv(exchange_id: str, symbol: str, timeframe: str = '4h', limit: int = 100, api_key: str = None, api_secret: str = None):
     """Fetches OHLCV data from the specified exchange."""
     # Initialize exchange using helper
     exchange = await initialize_exchange(exchange_id, api_key, api_secret)
