@@ -233,7 +233,7 @@ async def get_market_overview():
             last_cached_timestamp: Optional[int] = None
 
             logger.info(f"[{symbol}] Attempting to load OHLCV data from cache...")
-            cached_df = read_ohlcv_from_cache(settings.CACHE_DIRECTORY, symbol)
+            cached_df = read_ohlcv_from_cache(settings.CACHE_DIRECTORY, symbol, timeframe='1h')
 
             if cached_df is not None and not cached_df.empty:
                 cached_df.sort_values(by='timestamp', ascending=True, inplace=True)
@@ -328,7 +328,7 @@ async def get_market_overview():
 
                     if not final_df.empty:
                         try:
-                            write_ohlcv_to_cache(settings.CACHE_DIRECTORY, symbol, final_df)
+                            write_ohlcv_to_cache(settings.CACHE_DIRECTORY, symbol, final_df, timeframe='1h')
                             logger.info(f"[{symbol}] Successfully updated cache with {len(final_df)} records.")
                         except Exception as e:
                             logger.error(f"[{symbol}] Error writing to cache: {e}")

@@ -4,6 +4,7 @@ import SymbolOverview from '../components/SymbolOverview.jsx';
 import OrderEntryForm from '../components/OrderEntryForm.jsx'; // Import OrderEntryForm
 import LLMPromptGenerator from '../components/LLMPromptGenerator.jsx'; // Import LLM Prompt Generator
 import DCAAnalysisSummary from '../components/DCAAnalysisSummary.jsx'; // Import DCA Analysis Summary
+import HistoricalPerformance from '../components/HistoricalPerformance.jsx'; // Import Historical Performance
 import ThemeToggleButton from '../components/ThemeToggleButton.jsx'; // Import Theme Toggle
 
 //const MOCK_MARKET_OVERVIEW_DATA = []
@@ -220,6 +221,9 @@ const DashboardPage = () => {
 
             {/* DCA Analysis Summary */}
             <DCAAnalysisSummary marketData={data} />
+            
+            {/* Historical Performance Section */}
+            <HistoricalPerformance selectedSymbol={selectedSymbol} />
           </div>
 
           {/* Order Entry Section - Conditional */}
