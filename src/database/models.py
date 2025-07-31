@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text
 from sqlalchemy.sql import func
-from src.database.base import BaseModel
+from database.base import BaseModel
 from datetime import datetime
 
 class Order(BaseModel):

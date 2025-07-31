@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from src.core.config import settings
-from src.database.base import Base  # Ensure Base is imported if we need to create tables
+from core.config import settings
+from database.base import Base  # Ensure Base is imported if we need to create tables
 
 # SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db" # Example if not using settings
 SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL

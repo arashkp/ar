@@ -9,7 +9,7 @@ code duplication across routers and services.
 import os
 from typing import Optional, Tuple
 from fastapi import HTTPException, status
-from config.config import Settings, get_settings
+from core.config import Settings, settings
 
 def get_api_keys_from_env(exchange_id: str) -> Tuple[Optional[str], Optional[str]]:
     """

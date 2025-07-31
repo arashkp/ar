@@ -1,23 +1,24 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
-from src.services.trading_api import fetch_ohlcv as fetch_ohlcv_service, fetch_balance as fetch_balance_service
-from config.config import Settings, get_settings
-from src.utils.error_handlers import exchange_error_handler, api_error_handler
-from src.utils.api_key_manager import get_api_keys_for_public_data, get_api_keys_for_private_data
+from services.trading_api import fetch_ohlcv as fetch_ohlcv_service, fetch_balance as fetch_balance_service
+from core.config import Settings, settings
+from sqlalchemy.orm import Session
+from utils.error_handlers import exchange_error_handler, api_error_handler
+from utils.api_key_manager import get_api_keys_for_public_data, get_api_keys_for_private_data
 
 router = APIRouter()
 
 @router.get("/api/v1/exchange/ohlcv")
 @exchange_error_handler("exchange_id", "OHLCV data fetching")
 async def get_ohlcv(
-    exchange_id: str = Query(..., description="Exchange ID (e.g., 'binance', 'coinbasepro')"),
-    symbol: str = Query(..., description="Trading symbol (e.g., 'BTC/USDT')"),
-    timeframe: str = Query("1h", description="Timeframe for OHLCV data (e.g., '1m', '5m', '1h', '1d')"),
-    limit: int = Query(100, description="Number of data points to retrieve"),
+    exchange_id: str,
+    symbol: str,
+    timeframe: str = "4h",
+    limit: int = 100,
     # API keys are optional for public data like OHLCV on many exchanges
-    api_key: Optional[str] = Query(None, description="Optional API Key for the exchange"),
-    api_secret: Optional[str] = Query(None, description="Optional API Secret for the exchange"),
-    settings: Settings = Depends(get_settings) # Allow global settings if keys are there
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
+    settings: Settings = Depends(lambda: settings) # Allow global settings if keys are there
 ):
     """
     Fetches OHLCV (Open, High, Low, Close, Volume) data for a specific symbol
@@ -44,11 +45,11 @@ async def get_ohlcv(
 @router.get("/api/v1/exchange/balance")
 @exchange_error_handler("exchange_id", "balance fetching")
 async def get_balance(
-    exchange_id: str = Query(..., description="Exchange ID (e.g., 'binance')"),
+    exchange_id: str,
     # API keys can be passed as query params or ideally loaded from config/env
-    api_key: Optional[str] = Query(None, description="API Key for the exchange"),
-    api_secret: Optional[str] = Query(None, description="API Secret for the exchange"),
-    settings: Settings = Depends(get_settings)
+    api_key: Optional[str] = None,
+    api_secret: Optional[str] = None,
+    settings: Settings = Depends(lambda: settings)
 ):
     """
     Fetches account balance from a specific exchange.

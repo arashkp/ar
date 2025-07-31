@@ -14,3 +14,4 @@ scipy
 pandas_ta~=0.3.14b0
 pydantic~=2.11.7
 mexc-api
+aiohttp

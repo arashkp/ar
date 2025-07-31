@@ -9,9 +9,9 @@ import pandas_ta as ta
 import ccxt.async_support as ccxt
 from pydantic import BaseModel
 import os
-from src.services.cache_manager import read_ohlcv_from_cache, \
+from services.cache_manager import read_ohlcv_from_cache, \
     write_ohlcv_to_cache
-from src.core.config import settings
+from core.config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

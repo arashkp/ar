@@ -5,15 +5,21 @@ This module provides API endpoints for fetching historical performance
 data calculated from OHLCV data.
 """
 
-from fastapi import APIRouter, Query, HTTPException, Depends
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import JSONResponse
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+import asyncio
 import logging
-from src.services.historical_performance_service import (
-    HistoricalPerformanceService, 
-    PerformanceMetrics
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+
+# Import services and utilities
+from services.historical_performance_service import (
+    HistoricalPerformanceService, PerformanceMetrics
 )
-from src.routers.market_overview import SYMBOL_CONFIG
-from src.utils.error_handlers import api_error_handler
+from routers.market_overview import SYMBOL_CONFIG
+from utils.error_handlers import api_error_handler
 
 logger = logging.getLogger(__name__)
 

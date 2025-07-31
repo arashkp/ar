@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session
 from datetime import datetime # Added import
-from src.database.models import Order
-from src.schemas.order_schema import OrderCreate
-from src.utils.crud_helpers import BaseCRUDHelper, validate_pagination_params
+from database.models import Order
+from schemas.order_schema import OrderCreate
+from utils.crud_helpers import BaseCRUDHelper, validate_pagination_params
 
 # Create base CRUD helper for Order model
 order_crud = BaseCRUDHelper(Order)

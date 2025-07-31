@@ -5,7 +5,6 @@ import OrderEntryForm from '../components/OrderEntryForm.jsx'; // Import OrderEn
 import LLMPromptGenerator from '../components/LLMPromptGenerator.jsx'; // Import LLM Prompt Generator
 import DCAAnalysisSummary from '../components/DCAAnalysisSummary.jsx'; // Import DCA Analysis Summary
 import HistoricalPerformance from '../components/HistoricalPerformance.jsx'; // Import Historical Performance
-import ThemeToggleButton from '../components/ThemeToggleButton.jsx'; // Import Theme Toggle
 
 //const MOCK_MARKET_OVERVIEW_DATA = []
 
@@ -166,8 +165,6 @@ const DashboardPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
             </button>
-            {/* Icon-only theme toggle */}
-            <ThemeToggleButton iconOnly buttonClassName={`p-2 rounded-lg transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600`} />
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-4 text-center">
             Real-time market analysis with enhanced volume indicators and DCA strategy insights

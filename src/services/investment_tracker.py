@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from collections import defaultdict
 
-from src.schemas.investment_schema import InvestmentSummaryResponse, InvestmentDataPoint
-from src.crud import orders as crud_orders # Assuming function will be in crud_orders
+from schemas.investment_schema import InvestmentSummaryResponse, InvestmentDataPoint
+from crud import orders as crud_orders # Assuming function will be in crud_orders
 # from src.crud import trades as crud_trades # If using trades table directly
 
 import logging
