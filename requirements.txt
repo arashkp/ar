@@ -18,3 +18,4 @@ scipy
 pydantic~=2.11.7
 mexc-api
 aiohttp
+bitunix
