@@ -9,8 +9,29 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from dotenv import load_dotenv
 import aiohttp
+import math
 
 logger = logging.getLogger(__name__)
+
+def format_price_smart(price: float) -> str:
+    """
+    Format price with appropriate decimal places based on magnitude.
+    For very small prices (< 0.01), show more decimal places.
+    For larger prices, show fewer decimal places.
+    """
+    if price == 0:
+        return "0.0000"
+    
+    if price < 0.0001:
+        return f"{price:.8f}"
+    elif price < 0.01:
+        return f"{price:.6f}"
+    elif price < 1:
+        return f"{price:.4f}"
+    elif price < 10:
+        return f"{price:.3f}"
+    else:
+        return f"{price:.2f}"
 
 class TelegramNotificationService:
     def __init__(self):
@@ -130,24 +151,24 @@ class TelegramNotificationService:
                 report += "\n"
                 
                 # Best and worst performers (fix the logic)
-                best_performers = sorted(filtered_bitunix_assets, key=lambda x: float(x.get("unrealized_pnl_percentage", 0)), reverse=True)[:2]
-                worst_performers = sorted(filtered_bitunix_assets, key=lambda x: float(x.get("unrealized_pnl_percentage", 0)))[:2]
+                # best_performers = sorted(filtered_bitunix_assets, key=lambda x: float(x.get("unrealized_pnl_percentage", 0)), reverse=True)[:2]
+                # worst_performers = sorted(filtered_bitunix_assets, key=lambda x: float(x.get("unrealized_pnl_percentage", 0)))[:2]
                 
-                report += f"🏆 <b>Best Performers</b>\n"
-                for asset in best_performers:
-                    symbol = asset.get("symbol", "Unknown")
-                    pnl_percentage = float(asset.get("unrealized_pnl_percentage", 0))
-                    report += f"• {symbol}: {pnl_percentage:+.2f}%\n"
+                # report += f"🏆 <b>Best Performers</b>\n"
+                # for asset in best_performers:
+                #     symbol = asset.get("symbol", "Unknown")
+                #     pnl_percentage = float(asset.get("unrealized_pnl_percentage", 0))
+                #     report += f"• {symbol}: {pnl_percentage:+.2f}%\n"
                 
-                report += "\n"
+                # report += "\n"
                 
-                report += f"⚠️ <b>Worst Performers</b>\n"
-                for asset in worst_performers:
-                    symbol = asset.get("symbol", "Unknown")
-                    pnl_percentage = float(asset.get("unrealized_pnl_percentage", 0))
-                    report += f"• {symbol}: {pnl_percentage:+.2f}%\n"
+                # report += f"⚠️ <b>Worst Performers</b>\n"
+                # for asset in worst_performers:
+                #     symbol = asset.get("symbol", "Unknown")
+                #     pnl_percentage = float(asset.get("unrealized_pnl_percentage", 0))
+                #     report += f"• {symbol}: {pnl_percentage:+.2f}%\n"
                 
-                report += "\n"
+                # report += "\n"
                 
                 # Asset details
                 report += f"📊 <b>Asset Details</b>\n"
@@ -156,7 +177,7 @@ class TelegramNotificationService:
                     balance = float(asset.get("current_balance", 0))
                     avg_entry = float(asset.get("average_entry_price", 0))
                     current_price = float(asset.get("current_price", 0))
-                    report += f"• {symbol}: {balance:,.2f} @ ${avg_entry:.4f} → ${current_price:.4f}\n"
+                    report += f"• {symbol}: {balance:,.2f} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
             else:
                 report += f"📈 <b>Bitunix Portfolio</b>\n"
                 report += f"No data available.\n\n"
@@ -185,7 +206,7 @@ class TelegramNotificationService:
                 balance = float(bitget_asset.get("current_balance", 0))
                 avg_entry = float(bitget_asset.get("average_entry_price", 0))
                 current_price = float(bitget_asset.get("current_price", 0))
-                report += f"• {symbol}: {balance:,.2f} @ ${avg_entry:.4f} → ${current_price:.4f}\n"
+                report += f"• {symbol}: {balance:,.2f} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
             
             # Overall portfolio summary
             if total_invested > 0:

@@ -5,7 +5,7 @@ import decimal
 import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema
-import pandas_ta as ta
+from src.utils.technical_analysis import _add_ta_methods_to_dataframe
 import ccxt.async_support as ccxt
 from pydantic import BaseModel
 import os

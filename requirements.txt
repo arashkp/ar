@@ -1,3 +1,5 @@
+setuptools>=68.0.0
+wheel>=0.41.0
 fastapi~=0.115.13
 uvicorn[standard]
 gunicorn
@@ -11,9 +13,8 @@ pydantic-settings
 pytest~=8.4.1
 pytest-asyncio
 pandas~=2.3.0
-numpy~=1.24.0
+numpy<2.0.0
 scipy
-pandas_ta~=0.3.14b0
 pydantic~=2.11.7
 mexc-api
 aiohttp

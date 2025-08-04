@@ -10,12 +10,8 @@ from src.utils.auth import require_api_key
 
 load_dotenv()
 
-# Suppress the specific UserWarning from pandas_ta regarding pkg_resources
-warnings.filterwarnings(
-    "ignore",
-    category=UserWarning,
-    message="pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.",
-)
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore", category=UserWarning)
 
 app = FastAPI(
     title="AR Trading API",
