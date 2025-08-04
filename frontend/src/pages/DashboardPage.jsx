@@ -140,37 +140,37 @@ const DashboardPage = () => {
       <div className="w-full max-w-none px-0 py-6">
         {/* Centered Header */}
         <div className="flex flex-col items-center justify-center mb-8 w-full">
-          <div className="flex flex-row items-center justify-center space-x-4 w-full">
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white text-center">Market Dashboard</h1>
+          <div className="flex flex-row items-center justify-center space-x-2 sm:space-x-4 w-full">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-900 dark:text-white text-center">Market Dashboard</h1>
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="p-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-600 hover:text-white rounded-lg transition-colors disabled:opacity-50"
+              className="p-1 sm:p-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-600 hover:text-white rounded-lg transition-colors disabled:opacity-50"
               title="Refresh data"
             >
-              <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-4 h-4 sm:w-5 sm:h-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
             <button
               onClick={() => setShowOrderForm(!showOrderForm)}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`p-1 sm:p-2 rounded-lg transition-colors ${
                 showOrderForm 
                   ? 'bg-green-600 text-white hover:bg-green-700' 
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               }`}
               title={showOrderForm ? 'Hide Order Form' : 'Show Order Form'}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
             </button>
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-4 text-center">
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-2 sm:mt-4 text-center px-2">
             Real-time market analysis with enhanced volume indicators and DCA strategy insights
           </p>
           {isRefreshing && (
-            <div className="mt-2 text-sm text-blue-600 dark:text-blue-400 text-center">
+            <div className="mt-2 text-xs sm:text-sm text-blue-600 dark:text-blue-400 text-center">
               Refreshing data...
             </div>
           )}

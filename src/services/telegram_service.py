@@ -79,14 +79,17 @@ class TelegramNotificationService:
             api_key = os.getenv("API_KEY", "vZgz1jBWa_FmmEazZp722avXKjNIkjUufKXadoKACrk")
             headers = {"X-API-Key": api_key}
             
+            # Use deployed URL instead of localhost
+            base_url = os.getenv("API_BASE_URL", "https://ar-trading.onrender.com")
+            
             async with aiohttp.ClientSession() as session:
                 # Fetch Bitunix data
-                bitunix_url = "http://localhost:8000/api/v1/spot-trades/backward-analysis"
+                bitunix_url = f"{base_url}/api/v1/spot-trades/backward-analysis"
                 async with session.get(bitunix_url, headers=headers) as response:
                     bitunix_data = await response.json() if response.status == 200 else None
                 
                 # Fetch Bitget data
-                bitget_url = "http://localhost:8000/api/v1/bitget/backward-analysis?symbol=HYPE/USDT"
+                bitget_url = f"{base_url}/api/v1/bitget/backward-analysis?symbol=HYPE/USDT"
                 async with session.get(bitget_url, headers=headers) as response:
                     bitget_data = await response.json() if response.status == 200 else None
                 
