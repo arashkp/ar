@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import warnings
 import os
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.routers import exchange, trades, market_overview, orders, investment, \
@@ -9,6 +10,10 @@ from src.database.session import create_db_and_tables  # For DB initialization
 from src.utils.auth import require_api_key
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -32,6 +37,9 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     create_db_and_tables()  # Creates tables if they don't exist
+    # Log the port for debugging
+    port = int(os.getenv("PORT", 8000))
+    logger.info(f"Application starting on port {port}")
 
 
 # Include the exchange router with API key protection
@@ -60,3 +68,7 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+# For Render deployment - ensure port is properly set
+import os
+port = int(os.getenv("PORT", 8000))
