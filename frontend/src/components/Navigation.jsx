@@ -51,7 +51,7 @@ const Navigation = ({ currentPage, onPageChange, onLogout }) => {
           <div className="flex items-center space-x-1 sm:space-x-2">
             <button
               onClick={onLogout}
-              className="px-2 py-1 sm:px-3 sm:py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-xs sm:text-sm"
+              className="px-1 py-0.5 sm:px-2 sm:py-1 lg:px-3 lg:py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-xs sm:text-sm"
             >
               Logout
             </button>
