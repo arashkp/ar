@@ -50,6 +50,10 @@ app.include_router(telegram.router, dependencies=[require_api_key()])  # Added b
 async def health_check():
     return {"status": "ok", "message": "AR Trading API is running"}
 
+@app.get("/health/public")
+async def public_health_check():
+    return {"status": "ok", "message": "AR Trading API is running"}
+
 
 # For local development
 if __name__ == "__main__":
