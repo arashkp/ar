@@ -9,27 +9,47 @@ import axios from 'axios';
 
 // Default API configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-const DEFAULT_TIMEOUT = 30000; // 30 seconds
+const DEFAULT_TIMEOUT = 120000; // 2 minutes for Render wake-up
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY = 1000; // 1 second
 
 // Create axios instance with default configuration
 const apiClient = axios.create({
-    baseURL: API_BASE_URL,
+    baseURL: `${API_BASE_URL}/api/v1`,
     timeout: DEFAULT_TIMEOUT,
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
-// Add request interceptor to include API key
-apiClient.interceptors.request.use((config) => {
-    const apiKey = localStorage.getItem('apiKey');
-    if (apiKey) {
-        config.headers['X-API-Key'] = apiKey;
+/**
+ * Wake up the backend service (useful for Render's sleep behavior)
+ * 
+ * @param {string} baseURL - Base URL for the API
+ * @returns {Promise<boolean>} True if wake-up successful
+ */
+export async function wakeUpBackend(baseURL = API_BASE_URL) {
+    try {
+        console.log('Attempting to wake up backend service...');
+        
+        // Try the public health endpoint first (no auth required)
+        const healthResponse = await fetch(`${baseURL}/health/public`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(120000) // 2 minutes timeout
+        });
+        
+        if (healthResponse.ok) {
+            console.log('Backend service is awake and responding');
+            return true;
+        } else {
+            console.log('Backend health check failed');
+            return false;
+        }
+    } catch (error) {
+        console.log('Backend wake-up failed:', error.message);
+        return false;
     }
-    return config;
-});
+}
 
 /**
  * Custom error class for API errors
