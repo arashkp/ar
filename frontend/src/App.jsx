@@ -8,7 +8,7 @@ import TelegramControl from './components/TelegramControl.jsx';
 import { wakeUpBackend } from './api/apiHelpers.js';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState('asset-overview');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [apiKey, setApiKey] = useState('');
 
