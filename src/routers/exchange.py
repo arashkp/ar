@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
-from services.trading_api import fetch_ohlcv as fetch_ohlcv_service, fetch_balance as fetch_balance_service
-from core.config import Settings, settings
+from src.services.trading_api import fetch_ohlcv as fetch_ohlcv_service, fetch_balance as fetch_balance_service
+from src.core.config import Settings, settings
 from sqlalchemy.orm import Session
-from utils.error_handlers import exchange_error_handler, api_error_handler
-from utils.api_key_manager import get_api_keys_for_public_data, get_api_keys_for_private_data
+from src.utils.error_handlers import exchange_error_handler, api_error_handler
+from src.utils.api_key_manager import get_api_keys_for_public_data, get_api_keys_for_private_data
 
 router = APIRouter()
 

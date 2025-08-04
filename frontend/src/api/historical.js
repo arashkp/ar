@@ -13,7 +13,8 @@
  */
 export const getHistoricalPerformance = async (symbols = null, timeframes = null) => {
   try {
-    let url = 'http://localhost:8000/api/v1/historical/performance';
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    let url = `${apiBaseUrl}/historical/performance`;
     const params = new URLSearchParams();
     
     if (symbols && symbols.length > 0) {
@@ -28,7 +29,12 @@ export const getHistoricalPerformance = async (symbols = null, timeframes = null
       url += `?${params.toString()}`;
     }
     
-    const response = await fetch(url);
+    const apiKey = localStorage.getItem('apiKey');
+    const headers = {};
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
+    const response = await fetch(url, { headers });
     
     if (response.ok) {
       return await response.json();
@@ -50,7 +56,8 @@ export const getHistoricalPerformance = async (symbols = null, timeframes = null
  */
 export const getSymbolPerformance = async (symbol, timeframes = null) => {
   try {
-    let url = `http://localhost:8000/api/v1/historical/performance/symbol/${encodeURIComponent(symbol)}`;
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    let url = `${apiBaseUrl}/historical/performance/symbol/${encodeURIComponent(symbol)}`;
     
     if (timeframes && timeframes.length > 0) {
       const params = new URLSearchParams();
@@ -58,7 +65,12 @@ export const getSymbolPerformance = async (symbol, timeframes = null) => {
       url += `?${params.toString()}`;
     }
     
-    const response = await fetch(url);
+    const apiKey = localStorage.getItem('apiKey');
+    const headers = {};
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
+    const response = await fetch(url, { headers });
     
     if (response.ok) {
       return await response.json();
@@ -78,7 +90,13 @@ export const getSymbolPerformance = async (symbol, timeframes = null) => {
  */
 export const getSupportedSymbolsAndTimeframes = async () => {
   try {
-    const response = await fetch('http://localhost:8000/api/v1/historical/supported');
+    const apiKey = localStorage.getItem('apiKey');
+    const headers = {};
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    const response = await fetch(`${apiBaseUrl}/historical/supported`, { headers });
     
     if (response.ok) {
       return await response.json();

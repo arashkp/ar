@@ -10,7 +10,7 @@ from typing import TypeVar, Generic, Type, Optional, List, Dict, Any, Union
 from sqlalchemy.orm import Session, Query
 from sqlalchemy import desc, asc
 from fastapi import HTTPException, status
-from database.base import BaseModel
+from src.database.base import BaseModel
 
 logger = logging.getLogger(__name__)
 

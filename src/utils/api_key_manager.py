@@ -9,9 +9,25 @@ code duplication across routers and services.
 import os
 from typing import Optional, Tuple
 from fastapi import HTTPException, status
-from core.config import Settings, settings
+from src.core.config import Settings, settings
 
-def get_api_keys_from_env(exchange_id: str) -> Tuple[Optional[str], Optional[str]]:
+def get_api_keys_from_env(exchange_id: str, key_type: str = "API_KEY") -> Optional[str]:
+    """
+    Get API key for an exchange from environment variables.
+    
+    Args:
+        exchange_id: The exchange identifier (e.g., 'binance', 'coinbasepro')
+        key_type: The type of key ('API_KEY', 'API_SECRET', 'PASSPHRASE')
+        
+    Returns:
+        The API key value or None if not found
+    """
+    exchange_upper = exchange_id.upper()
+    key_name = f"{exchange_upper}_{key_type}"
+    
+    return os.getenv(key_name)
+
+def get_api_keys_from_env_tuple(exchange_id: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Get API keys for an exchange from environment variables.
     
@@ -21,12 +37,8 @@ def get_api_keys_from_env(exchange_id: str) -> Tuple[Optional[str], Optional[str
     Returns:
         Tuple of (api_key, api_secret) - both may be None if not found
     """
-    exchange_upper = exchange_id.upper()
-    api_key_name = f"{exchange_upper}_API_KEY"
-    api_secret_name = f"{exchange_upper}_API_SECRET"
-    
-    api_key = os.getenv(api_key_name)
-    api_secret = os.getenv(api_secret_name)
+    api_key = get_api_keys_from_env(exchange_id, "API_KEY")
+    api_secret = get_api_keys_from_env(exchange_id, "API_SECRET")
     
     return api_key, api_secret
 
@@ -76,7 +88,7 @@ def get_effective_api_keys(
             return settings_key, settings_secret
     
     # Priority 3: Environment variables
-    env_key, env_secret = get_api_keys_from_env(exchange_id)
+    env_key, env_secret = get_api_keys_from_env_tuple(exchange_id)
     if env_key and env_secret:
         return env_key, env_secret
     

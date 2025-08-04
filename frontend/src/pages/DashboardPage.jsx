@@ -89,8 +89,8 @@ const DashboardPage = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center w-full px-4">
+      <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <div className="text-xl font-semibold text-gray-600 dark:text-gray-400">Loading market data...</div>
         </div>
@@ -100,8 +100,8 @@ const DashboardPage = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center w-full max-w-md mx-auto p-6">
+      <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
           <div className="text-red-500 text-6xl mb-4">⚠️</div>
           <div className="text-xl font-semibold text-red-600 dark:text-red-400 mb-2">Error Loading Data</div>
           <div className="text-gray-600 dark:text-gray-400 mb-6">{error}</div>
@@ -119,8 +119,8 @@ const DashboardPage = () => {
   // Adjust the check for 'data' to expect an array directly
   if (!data || !Array.isArray(data) || data.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center w-full max-w-md mx-auto p-6">
+      <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
           <div className="text-gray-500 text-6xl mb-4">📊</div>
           <div className="text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">No Market Data</div>
           <div className="text-gray-500 dark:text-gray-500 mb-6">No market data is currently available.</div>

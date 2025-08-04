@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 
-from services.bitunix_service import BitunixService
-from services.exchange_interface import SpotPosition, SpotOrder, SpotTrade
-from utils.api_key_manager import get_api_keys_from_env
+from src.services.bitunix_service import BitunixService
+from src.services.exchange_interface import SpotPosition, SpotOrder, SpotTrade
+from src.utils.api_key_manager import get_api_keys_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,8 @@ def get_bitunix_service() -> BitunixService:
     Raises:
         HTTPException: If API credentials are not available
     """
-    api_key, api_secret = get_api_keys_from_env("BITUNIX")
+    api_key = get_api_keys_from_env("BITUNIX", "API_KEY")
+    api_secret = get_api_keys_from_env("BITUNIX", "API_SECRET")
     
     if not api_key or not api_secret:
         raise HTTPException(

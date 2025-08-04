@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 import ccxt # Import ccxt for its specific exceptions
 
-from database.session import get_db
-from schemas.order_schema import OrderRequest, OrderResponse, OrderCreate # Added OrderCreate
-from services import order_manager # Assuming order_manager has the place_order function
-from crud import orders as crud_orders # Added import for crud_orders
-from database.models import Order # For type hinting if needed, though response_model handles conversion
+from src.database.session import get_db
+from src.schemas.order_schema import OrderRequest, OrderResponse, OrderCreate # Added OrderCreate
+from src.services import order_manager # Assuming order_manager has the place_order function
+from src.crud import orders as crud_orders # Added import for crud_orders
+from src.database.models import Order # For type hinting if needed, though response_model handles conversion
 
 router = APIRouter(
     prefix="/api/v1/orders",

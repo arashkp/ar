@@ -3,19 +3,19 @@ import os
 import logging
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from schemas.order_schema import OrderRequest, OrderCreate
-from crud import orders as crud_orders
-from database.models import Order # Required for the return type hint, and for CRUD to work with
+from src.schemas.order_schema import OrderRequest, OrderCreate
+from src.crud import orders as crud_orders
+from src.database.models import Order # Required for the return type hint, and for CRUD to work with
 from datetime import datetime, timezone
-from utils.api_key_manager import get_api_keys_from_env
-from utils.exchange_helpers import (
+from src.utils.api_key_manager import get_api_keys_from_env
+from src.utils.exchange_helpers import (
     initialize_exchange,
     format_order_params,
     parse_exchange_response,
     safe_exchange_operation
 )
-from utils.error_handlers import handle_ccxt_exception, handle_generic_exception
-from services.mexc_service import MEXCService
+from src.utils.error_handlers import handle_ccxt_exception, handle_generic_exception
+from src.services.mexc_service import MEXCService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

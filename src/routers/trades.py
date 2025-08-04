@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from database.session import get_db # Fixed import path
-from schemas import trade_schema # Pydantic schemas for trades
-from crud import trades as trades_crud # CRUD operations for trades
-from utils.error_handlers import api_error_handler
+from src.database.session import get_db # Fixed import path
+from src.schemas import trade_schema # Pydantic schemas for trades
+from src.crud import trades as trades_crud # CRUD operations for trades
+from src.utils.error_handlers import api_error_handler
 
 router = APIRouter(
     prefix="/api/v1/trades",

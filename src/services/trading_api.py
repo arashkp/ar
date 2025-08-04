@@ -1,12 +1,12 @@
 import ccxt.async_support as ccxt
 from fastapi import HTTPException
-from utils.exchange_helpers import (
+from src.utils.exchange_helpers import (
     initialize_exchange, 
     validate_exchange_capability, 
     validate_symbol,
     safe_exchange_operation
 )
-from utils.error_handlers import handle_ccxt_exception, handle_generic_exception
+from src.utils.error_handlers import handle_ccxt_exception, handle_generic_exception
 
 async def fetch_ohlcv(exchange_id: str, symbol: str, timeframe: str = '4h', limit: int = 100, api_key: str = None, api_secret: str = None):
     """Fetches OHLCV data from the specified exchange."""

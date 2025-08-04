@@ -8,7 +8,7 @@
 import axios from 'axios';
 
 // Default API configuration
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const DEFAULT_RETRY_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY = 1000; // 1 second
@@ -20,6 +20,15 @@ const apiClient = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+});
+
+// Add request interceptor to include API key
+apiClient.interceptors.request.use((config) => {
+    const apiKey = localStorage.getItem('apiKey');
+    if (apiKey) {
+        config.headers['X-API-Key'] = apiKey;
+    }
+    return config;
 });
 
 /**

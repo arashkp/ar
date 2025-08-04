@@ -10,12 +10,159 @@ const AssetOverview = () => {
     fetchAssetOverview();
   }, []);
 
+  const [currentOrders, setCurrentOrders] = useState({});
+
   const fetchAssetOverview = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:8000/api/v1/spot-trades/backward-analysis');
-      setAnalysisData(response.data);
-      setError(null);
+      
+      // Fetch data from both exchanges in parallel
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const apiKey = localStorage.getItem('apiKey');
+      const headers = {};
+      if (apiKey) {
+        headers['X-API-Key'] = apiKey;
+      }
+      
+      const [bitunixResponse, bitgetResponse, bitunixOrdersResponse, bitgetOrdersResponse, bitgetBalanceResponse] = await Promise.allSettled([
+        axios.get(`${apiBaseUrl}/api/v1/spot-trades/backward-analysis`, { headers }),
+        axios.get(`${apiBaseUrl}/api/v1/bitget/backward-analysis?symbol=HYPE/USDT`, { headers }),
+        axios.get(`${apiBaseUrl}/api/v1/spot-trades/orders`, { headers }),
+        axios.get(`${apiBaseUrl}/api/v1/bitget/orders`, { headers }),
+        axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers })
+      ]);
+
+      // Handle Bitunix data
+      let bitunixData = null;
+      if (bitunixResponse.status === 'fulfilled') {
+        bitunixData = bitunixResponse.value.data;
+      } else {
+        console.error('Bitunix error:', bitunixResponse.reason);
+      }
+
+      // Handle Bitget data
+      let bitgetData = null;
+      if (bitgetResponse.status === 'fulfilled') {
+        bitgetData = bitgetResponse.value.data;
+      } else {
+        console.error('Bitget error:', bitgetResponse.reason);
+      }
+
+      // Handle current orders
+      let bitunixOrders = [];
+      if (bitunixOrdersResponse.status === 'fulfilled') {
+        bitunixOrders = bitunixOrdersResponse.value.data;
+      } else {
+        console.error('Bitunix orders error:', bitunixOrdersResponse.reason);
+      }
+
+             let bitgetOrders = [];
+       if (bitgetOrdersResponse.status === 'fulfilled') {
+         bitgetOrders = bitgetOrdersResponse.value.data;
+       } else {
+         console.error('Bitget orders error:', bitgetOrdersResponse.reason);
+       }
+
+       // Handle Bitget balance
+       let bitgetBalance = null;
+       if (bitgetBalanceResponse.status === 'fulfilled') {
+         bitgetBalance = bitgetBalanceResponse.value.data;
+       } else {
+         console.error('Bitget balance error:', bitgetBalanceResponse.reason);
+       }
+
+      // Combine the data
+      let combinedData = { ...bitunixData };
+      
+      if (bitgetData && bitgetData.current_balance > 0) {
+        // Convert Bitget HYPE data to match Bitunix asset format
+        const hypeAsset = {
+          symbol: 'HYPE (BGet)',
+          current_balance: bitgetData.current_balance,
+          current_price: bitgetData.current_price,
+          average_entry_price: bitgetData.average_entry_price,
+          total_buy_quantity: bitgetData.total_buy_amount,
+          total_buy_value: bitgetData.total_buy_cost,
+          unrealized_pnl: bitgetData.unrealized_pnl,
+          unrealized_pnl_percentage: bitgetData.unrealized_pnl_percentage,
+          number_of_orders: bitgetData.number_of_orders,
+          relevant_orders: bitgetData.relevant_orders.map(trade => ({
+            date: new Date(trade.timestamp).toISOString(),
+            price: trade.price,
+            quantity: trade.amount,
+            value: trade.cost
+          }))
+        };
+
+        // Add HYPE asset to the combined data
+        if (combinedData.assets) {
+          combinedData.assets.push(hypeAsset);
+        } else {
+          combinedData.assets = [hypeAsset];
+        }
+      }
+
+      // Organize current orders by symbol
+      const ordersBySymbol = {};
+      
+             // Process Bitunix orders
+       bitunixOrders.forEach(order => {
+         // Store orders by both base symbol and full symbol for flexible matching
+         const baseSymbol = order.symbol.split('/')[0];
+         const fullSymbol = order.symbol;
+         
+         // Store under base symbol (e.g., "BTC")
+         if (!ordersBySymbol[baseSymbol]) {
+           ordersBySymbol[baseSymbol] = [];
+         }
+         ordersBySymbol[baseSymbol].push({
+           ...order,
+           exchange: 'Bitunix'
+         });
+         
+         // Also store under full symbol (e.g., "BTC/USDT")
+         if (!ordersBySymbol[fullSymbol]) {
+           ordersBySymbol[fullSymbol] = [];
+         }
+         ordersBySymbol[fullSymbol].push({
+           ...order,
+           exchange: 'Bitunix'
+         });
+       });
+
+       // Process Bitget orders
+       bitgetOrders.forEach(order => {
+         // Store orders by both base symbol and full symbol for flexible matching
+         const baseSymbol = order.symbol.split('/')[0];
+         const fullSymbol = order.symbol;
+         
+         // Store under base symbol (e.g., "HYPE")
+         if (!ordersBySymbol[baseSymbol]) {
+           ordersBySymbol[baseSymbol] = [];
+         }
+         ordersBySymbol[baseSymbol].push({
+           ...order,
+           exchange: 'Bitget'
+         });
+         
+         // Also store under full symbol (e.g., "HYPE/USDT")
+         if (!ordersBySymbol[fullSymbol]) {
+           ordersBySymbol[fullSymbol] = [];
+         }
+         ordersBySymbol[fullSymbol].push({
+           ...order,
+           exchange: 'Bitget'
+         });
+       });
+
+             console.log('Current orders by symbol:', ordersBySymbol);
+       setCurrentOrders(ordersBySymbol);
+       setAnalysisData(combinedData);
+       // Store Bitget balance for USDT calculation
+       if (bitgetBalance) {
+         localStorage.setItem('bitgetBalance', JSON.stringify(bitgetBalance));
+       }
+       setError(null);
     } catch (err) {
       setError(`Failed to fetch asset overview data: ${err.message}`);
     } finally {
@@ -28,7 +175,16 @@ const AssetOverview = () => {
     try {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'Invalid Date';
-      return date.toLocaleString();
+      // Use 24-hour format and compact date format
+      return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }) + ' ' + date.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
     } catch {
       return 'Invalid Date';
     }
@@ -97,35 +253,106 @@ const AssetOverview = () => {
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const getUsdtBalance = () => {
+  const formatOrderStatus = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'open':
+      case 'pending':
+        return 'Open';
+      case 'filled':
+      case 'closed':
+        return 'Filled';
+      case 'cancelled':
+      case 'canceled':
+        return 'Cancelled';
+      case 'partially_filled':
+        return 'Partial';
+      default:
+        return status || 'Unknown';
+    }
+  };
+
+  const getOrderStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'open':
+      case 'pending':
+        return 'text-yellow-600 dark:text-yellow-400';
+      case 'filled':
+      case 'closed':
+        return 'text-green-600 dark:text-green-400';
+      case 'cancelled':
+      case 'canceled':
+        return 'text-red-600 dark:text-red-400';
+      case 'partially_filled':
+        return 'text-orange-600 dark:text-orange-400';
+      default:
+        return 'text-gray-600 dark:text-gray-400';
+    }
+  };
+
+  const getBitunixUsdtBalance = () => {
     if (!analysisData || !analysisData.assets) return 0;
-    // Find USDT balance from assets
+    // Find USDT balance from Bitunix assets only
     const usdtAsset = analysisData.assets.find(asset => asset.symbol === 'USDT');
     return usdtAsset ? usdtAsset.current_balance : 0;
   };
 
-  const calculateTotalCost = () => {
+     const getBitgetUsdtBalance = () => {
+     try {
+       const bitgetBalanceStr = localStorage.getItem('bitgetBalance');
+       if (bitgetBalanceStr) {
+         const bitgetBalance = JSON.parse(bitgetBalanceStr);
+         // Get USDT free balance (available for trading)
+         if (bitgetBalance.USDT && bitgetBalance.USDT.free !== undefined) {
+           return bitgetBalance.USDT.free;
+         }
+       }
+     } catch (error) {
+       console.error('Error getting Bitget USDT balance:', error);
+     }
+     return 0;
+   };
+
+  const calculateBitunixTotalCost = () => {
     if (!analysisData || !analysisData.assets) return 0;
     const cryptoCost = analysisData.assets
-      .filter(asset => asset.symbol !== 'USDT' && asset.total_buy_value !== undefined)
+      .filter(asset => asset.symbol !== 'USDT' && !asset.symbol.includes('(BGet)') && asset.total_buy_value !== undefined)
       .reduce((total, asset) => total + (asset.total_buy_value || 0), 0);
-    return cryptoCost; // Only crypto cost
+    return cryptoCost;
   };
 
-  const calculateTotalCurrentValue = () => {
+  const calculateBitunixTotalCurrentValue = () => {
     if (!analysisData || !analysisData.assets) return 0;
     const cryptoValue = analysisData.assets
-      .filter(asset => asset.symbol !== 'USDT' && asset.current_balance !== undefined && asset.current_price !== undefined)
+      .filter(asset => asset.symbol !== 'USDT' && !asset.symbol.includes('(BGet)') && asset.current_balance !== undefined && asset.current_price !== undefined)
       .reduce((total, asset) => {
         const currentValue = (asset.current_balance || 0) * (asset.current_price || 0);
         return total + currentValue;
       }, 0);
-    return cryptoValue; // Only crypto value
+    return cryptoValue;
+  };
+
+  const calculateBitgetTotalCost = () => {
+    if (!analysisData || !analysisData.assets) return 0;
+    const cryptoCost = analysisData.assets
+      .filter(asset => asset.symbol.includes('(BGet)') && asset.total_buy_value !== undefined)
+      .reduce((total, asset) => total + (asset.total_buy_value || 0), 0);
+    return cryptoCost;
+  };
+
+  const calculateBitgetTotalCurrentValue = () => {
+    if (!analysisData || !analysisData.assets) return 0;
+    const cryptoValue = analysisData.assets
+      .filter(asset => asset.symbol.includes('(BGet)') && asset.current_balance !== undefined && asset.current_price !== undefined)
+      .reduce((total, asset) => {
+        const currentValue = (asset.current_balance || 0) * (asset.current_price || 0);
+        return total + currentValue;
+      }, 0);
+    return cryptoValue;
   };
 
   if (loading) {
     return (
-      <div className="w-full h-full p-4">
+      <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Asset Overview</h2>
           <p className="text-gray-600 dark:text-gray-400">Loading asset overview data...</p>
@@ -136,7 +363,7 @@ const AssetOverview = () => {
 
   if (error) {
     return (
-      <div className="w-full h-full p-4">
+      <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Asset Overview (BitUnix)</h2>
           <p className="text-red-500 dark:text-red-400">{error}</p>
@@ -153,7 +380,7 @@ const AssetOverview = () => {
 
   if (!analysisData || !analysisData.assets) {
     return (
-      <div className="w-full h-full p-4">
+      <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Asset Overview</h2>
           <p className="text-gray-600 dark:text-gray-400">No asset data available</p>
@@ -162,11 +389,18 @@ const AssetOverview = () => {
     );
   }
 
-  const totalCost = calculateTotalCost();
-  const totalCurrentValue = calculateTotalCurrentValue();
-  const totalPnL = totalCurrentValue - totalCost;
-  const totalPnLPercentage = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
-  const usdtBalance = getUsdtBalance();
+  const bitunixUsdtBalance = getBitunixUsdtBalance();
+  const bitgetUsdtBalance = getBitgetUsdtBalance();
+  
+  const bitunixTotalCost = calculateBitunixTotalCost();
+  const bitunixTotalCurrentValue = calculateBitunixTotalCurrentValue();
+  const bitunixTotalPnL = bitunixTotalCurrentValue - bitunixTotalCost;
+  const bitunixTotalPnLPercentage = bitunixTotalCost > 0 ? (bitunixTotalPnL / bitunixTotalCost) * 100 : 0;
+  
+  const bitgetTotalCost = calculateBitgetTotalCost();
+  const bitgetTotalCurrentValue = calculateBitgetTotalCurrentValue();
+  const bitgetTotalPnL = bitgetTotalCurrentValue - bitgetTotalCost;
+  const bitgetTotalPnLPercentage = bitgetTotalCost > 0 ? (bitgetTotalPnL / bitgetTotalCost) * 100 : 0;
   
   return (
     <div className="w-full h-full p-2">
@@ -180,43 +414,91 @@ const AssetOverview = () => {
         </p>
       </div>
 
-      {/* Total USDT Balance Info */}
-      <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-        <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3">Portfolio Summary</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
-            <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(usdtBalance)}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
-            <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(totalCost)}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
-            <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-              + ${formatValue(usdtBalance)} USDT = ${formatValue(totalCost + usdtBalance)}
-            </div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
-            <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(totalCurrentValue)}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
-            <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-              + ${formatValue(usdtBalance)} USDT = ${formatValue(totalCurrentValue + usdtBalance)}
-            </div>
-          </div>
-          <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
-            <div className={`text-xl font-bold ${totalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              ${formatValue(totalPnL)} ({totalPnLPercentage.toFixed(2)}%)
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
-          </div>
-        </div>
-      </div>
+             {/* Portfolio Summary - Split into Bitunix and Bitget side by side */}
+       <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+         {/* Bitunix Summary */}
+         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
+             <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs mr-2">
+               Bitunix
+             </span>
+             Portfolio Summary
+           </h2>
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
+               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitunixUsdtBalance)}</div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
+             </div>
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
+               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitunixTotalCost)}</div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
+               <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                 + ${formatValue(bitunixUsdtBalance)} USDT = ${formatValue(bitunixTotalCost + bitunixUsdtBalance)}
+               </div>
+             </div>
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
+               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitunixTotalCurrentValue)}</div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
+               <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                 + ${formatValue(bitunixUsdtBalance)} USDT = ${formatValue(bitunixTotalCurrentValue + bitunixUsdtBalance)}
+               </div>
+             </div>
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
+               <div className={`text-xl font-bold ${bitunixTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                 ${formatValue(bitunixTotalPnL)} ({bitunixTotalPnLPercentage.toFixed(2)}%)
+               </div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
+             </div>
+           </div>
+         </div>
 
-      {/* Assets Grid - Full width, 4 columns on extra large screens, 2 on large, 1 on mobile */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3 w-full">
+         {/* Bitget Summary */}
+         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
+             <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-xs mr-2">
+               Bitget
+             </span>
+             Portfolio Summary
+           </h2>
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
+               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
+             </div>
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
+               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
+               <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                 + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
+               </div>
+             </div>
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
+               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
+               <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                 + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
+               </div>
+             </div>
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
+               <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                 ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
+               </div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
+             </div>
+           </div>
+         </div>
+       </div>
+
+             {/* Assets Grid - Full width, 5 columns on extra large screens, 2 on large, 1 on mobile */}
+       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-3 w-full">
         {analysisData.assets
           .filter(asset => asset.symbol !== 'USDT' && asset) // Exclude USDT from asset tables and ensure asset exists
           .map((asset, index) => {
@@ -252,9 +534,9 @@ const AssetOverview = () => {
                     <div>
                       <span className="font-semibold text-gray-600 dark:text-gray-400">PnL:</span>
                       <br />
-                      <span className={`text-sm font-bold ${(asset.unrealized_pnl || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        ${formatValue(asset.unrealized_pnl || 0)} ({(asset.unrealized_pnl_percentage || 0)}%)
-                      </span>
+                                             <span className={`text-sm font-bold ${(asset.unrealized_pnl || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                         ${formatValue(asset.unrealized_pnl || 0)} ({(asset.unrealized_pnl_percentage || 0).toFixed(2)}%)
+                       </span>
                     </div>
                   </div>
                 </div>
@@ -288,50 +570,129 @@ const AssetOverview = () => {
                   </div>
                 </div>
 
-                {/* Relevant Orders Table - Show ALL orders */}
-                <div className="mb-3 w-full">
-                  <h3 className="text-sm font-semibold mb-1 text-gray-800 dark:text-white">
-                    Orders ({asset.number_of_orders || 0})
-                  </h3>
-                  <div className="w-full">
-                    <table className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      <thead className="bg-gray-50 dark:bg-gray-700">
-                        <tr>
-                          <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Date
-                          </th>
-                          <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Price
-                          </th>
-                          <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Qty
-                          </th>
-                          <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Value
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {(asset.relevant_orders || []).map((order, orderIndex) => (
-                          <tr key={orderIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                            <td className="px-2 py-1 text-xs text-gray-900 dark:text-white">
-                              {formatDate(order.date || '')}
-                            </td>
-                            <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                              ${formatPrice(order.price || 0)}
-                            </td>
-                            <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                              {formatQuantity(order.quantity || 0)}
-                            </td>
-                            <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                              ${formatValue(order.value || 0)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                                 {/* Current Orders Table */}
+                 {(currentOrders[asset.symbol] || 
+                   (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
+                   (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
+                   currentOrders[asset.symbol.replace('/USDT', '')] ||
+                   currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
+                  ) && (currentOrders[asset.symbol] || 
+                        (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
+                        (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
+                        currentOrders[asset.symbol.replace('/USDT', '')] ||
+                        currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
+                       ).length > 0 && (
+                                        <div className="mb-3 w-full">
+                       <h3 className="text-sm font-semibold mb-1 text-gray-800 dark:text-white">
+                         Current Orders ({(currentOrders[asset.symbol] || 
+                           (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
+                           (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
+                           currentOrders[asset.symbol.replace('/USDT', '')] ||
+                           currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
+                          ).length})
+                       </h3>
+                       <div className="w-full">
+                         <table className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                           <thead className="bg-gray-50 dark:bg-gray-700">
+                             <tr>
+                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                 Side
+                               </th>
+                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                 Type
+                               </th>
+                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                 Price
+                               </th>
+                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                 Qty
+                               </th>
+                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                 Filled
+                               </th>
+                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                 Status
+                               </th>
+                             </tr>
+                           </thead>
+                           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                          {(currentOrders[asset.symbol] || 
+                               (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
+                               (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
+                               currentOrders[asset.symbol.replace('/USDT', '')] ||
+                               currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
+                              ).map((order, orderIndex) => (
+                               <tr key={orderIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                 <td className={`px-2 py-1 text-xs font-mono ${order.side?.toLowerCase() === 'buy' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                   {order.side?.toUpperCase() || 'N/A'}
+                                 </td>
+                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                 {order.order_type || order.type || 'N/A'}
+                               </td>
+                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                 ${formatPrice(order.price || 0)}
+                               </td>
+                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                 {formatQuantity(order.quantity || order.amount || 0)}
+                               </td>
+                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                 {formatQuantity(order.filled_quantity || 0)}
+                               </td>
+                               <td className={`px-2 py-1 text-xs font-mono ${getOrderStatusColor(order.status)}`}>
+                                 {formatOrderStatus(order.status)}
+                               </td>
+                             </tr>
+                           ))}
+                         </tbody>
+                       </table>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* History Orders Table - Show ALL orders */}
+                 <div className="mb-3 w-full">
+                   <h3 className="text-sm font-semibold mb-1 text-gray-800 dark:text-white">
+                     History Orders ({asset.number_of_orders || 0})
+                   </h3>
+                   <div className="w-full">
+                     <table className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                       <thead className="bg-gray-50 dark:bg-gray-700">
+                         <tr>
+                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                             Date
+                           </th>
+                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                             Price
+                           </th>
+                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                             Qty
+                           </th>
+                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                             Value
+                           </th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                         {(asset.relevant_orders || []).map((order, orderIndex) => (
+                           <tr key={orderIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                             <td className="px-2 py-1 text-xs text-gray-900 dark:text-white">
+                               {formatDate(order.date || '')}
+                             </td>
+                             <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                               ${formatPrice(order.price || 0)}
+                             </td>
+                             <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                               {formatQuantity(order.quantity || 0)}
+                             </td>
+                             <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                               ${formatValue(order.value || 0)}
+                             </td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                 </div>
               </div>
             );
           } catch (error) {

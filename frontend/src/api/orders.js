@@ -1,6 +1,6 @@
 import { apiPost, validateRequiredFields, validatePositiveNumber, formatErrorMessage } from './apiHelpers';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1'; // Assuming the same base URL
+// Using apiHelpers for base URL configuration
 
 /**
  * Places an order.

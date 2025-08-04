@@ -1,8 +1,11 @@
 fastapi~=0.115.13
 uvicorn[standard]
+gunicorn
 sqlalchemy~=2.0.41
 psycopg2-binary
 python-dotenv
+python-telegram-bot~=20.7
+apscheduler~=3.10.4
 ccxt~=4.4.90
 pydantic-settings
 pytest~=8.4.1

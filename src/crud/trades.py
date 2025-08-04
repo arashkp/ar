@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
-from database.models import Trade # Fixed import path
-from schemas import trade_schema # This refers to src/schemas/trade_schema.py
-from utils.crud_helpers import BaseCRUDHelper
+from src.database.models import Trade # Fixed import path
+from src.schemas import trade_schema # This refers to src/schemas/trade_schema.py
+from src.utils.crud_helpers import BaseCRUDHelper
 
 # Create base CRUD helper for Trade model
 trade_crud = BaseCRUDHelper(Trade)

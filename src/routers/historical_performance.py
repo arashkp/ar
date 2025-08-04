@@ -15,11 +15,11 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 # Import services and utilities
-from services.historical_performance_service import (
+from src.services.historical_performance_service import (
     HistoricalPerformanceService, PerformanceMetrics
 )
-from routers.market_overview import SYMBOL_CONFIG
-from utils.error_handlers import api_error_handler
+from src.routers.market_overview import SYMBOL_CONFIG
+from src.utils.error_handlers import api_error_handler
 
 logger = logging.getLogger(__name__)
 
