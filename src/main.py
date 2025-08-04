@@ -62,6 +62,15 @@ async def health_check():
 async def public_health_check():
     return {"status": "ok", "message": "AR Trading API is running"}
 
+@app.get("/")
+async def root():
+    return {
+        "message": "AR Trading API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health/public"
+    }
+
 
 # For local development
 if __name__ == "__main__":
