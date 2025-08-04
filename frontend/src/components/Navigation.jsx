@@ -42,7 +42,7 @@ const Navigation = ({ currentPage, onPageChange, onLogout }) => {
                     : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
-                Telegram
+                🤖 Telegram
               </button>
             </div>
           </div>

@@ -5,7 +5,7 @@ import AssetOverview from './pages/BackwardAnalysis.jsx';
 import Navigation from './components/Navigation.jsx';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('asset-overview');
+  const [currentPage, setCurrentPage] = useState('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [apiKey, setApiKey] = useState('');
 
