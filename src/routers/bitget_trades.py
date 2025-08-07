@@ -154,11 +154,14 @@ def get_bitget_api_keys():
         
         if not api_key or not api_secret or not passphrase:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Bitget API keys not configured. Please set BITGET_API_KEY, BITGET_API_SECRET, and BITGET_PASSPHRASE environment variables."
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Bitget API not configured. Please set BITGET_API_KEY, BITGET_API_SECRET, and BITGET_PASSPHRASE environment variables."
             )
         
         return api_key, api_secret, passphrase
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
         logger.error(f"Error getting Bitget API keys: {e}")
         raise HTTPException(

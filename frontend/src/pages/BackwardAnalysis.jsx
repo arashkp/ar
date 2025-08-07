@@ -2,74 +2,102 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 const AssetOverview = () => {
-  const [analysisData, setAnalysisData] = useState(null);
+  const [assetData, setAssetData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetchAssetOverview();
-  }, []);
-
   const [currentOrders, setCurrentOrders] = useState({});
+  const [bitgetAvailable, setBitgetAvailable] = useState(false);
+
+  // Check if Bitget API is available
+  const checkBitgetAvailability = async () => {
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const apiKey = localStorage.getItem('apiKey');
+      const headers = apiKey ? { 'X-API-Key': apiKey } : {};
+      
+      const response = await axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers });
+      return response.status === 200;
+    } catch (error) {
+      // If we get 503 (Service Unavailable), Bitget is not configured
+      if (error.response?.status === 503) {
+        return false;
+      }
+      // For other errors, assume Bitget might be available but having issues
+      return true;
+    }
+  };
 
   const fetchAssetOverview = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Fetch data from both exchanges in parallel
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       const apiKey = localStorage.getItem('apiKey');
-      const headers = {};
-      if (apiKey) {
-        headers['X-API-Key'] = apiKey;
+      const headers = apiKey ? { 'X-API-Key': apiKey } : {};
+      
+      // Check Bitget availability first
+      const isBitgetAvailable = await checkBitgetAvailability();
+      setBitgetAvailable(isBitgetAvailable);
+      
+      // Prepare API calls based on availability
+      const apiCalls = [
+        // Always call Bitunix
+        axios.get(`${apiBaseUrl}/api/v1/spot-trades/backward-analysis`, { headers }),
+        axios.get(`${apiBaseUrl}/api/v1/spot-trades/orders`, { headers })
+      ];
+      
+      // Only add Bitget calls if available
+      if (isBitgetAvailable) {
+        apiCalls.push(
+          axios.get(`${apiBaseUrl}/api/v1/bitget/backward-analysis?symbol=HYPE/USDT`, { headers }),
+          axios.get(`${apiBaseUrl}/api/v1/bitget/orders`, { headers }),
+          axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers })
+        );
       }
       
-      const [bitunixResponse, bitgetResponse, bitunixOrdersResponse, bitgetOrdersResponse, bitgetBalanceResponse] = await Promise.allSettled([
-        axios.get(`${apiBaseUrl}/api/v1/spot-trades/backward-analysis`, { headers }),
-        axios.get(`${apiBaseUrl}/api/v1/bitget/backward-analysis?symbol=HYPE/USDT`, { headers }),
-        axios.get(`${apiBaseUrl}/api/v1/spot-trades/orders`, { headers }),
-        axios.get(`${apiBaseUrl}/api/v1/bitget/orders`, { headers }),
-        axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers })
-      ]);
-
-      // Handle Bitunix data
+      const responses = await Promise.allSettled(apiCalls);
+      
+      // Handle Bitunix data (always available)
       let bitunixData = null;
-      if (bitunixResponse.status === 'fulfilled') {
-        bitunixData = bitunixResponse.value.data;
-      } else {
-        console.error('Bitunix error:', bitunixResponse.reason);
-      }
-
-      // Handle Bitget data
-      let bitgetData = null;
-      if (bitgetResponse.status === 'fulfilled') {
-        bitgetData = bitgetResponse.value.data;
-      } else {
-        console.error('Bitget error:', bitgetResponse.reason);
-      }
-
-      // Handle current orders
       let bitunixOrders = [];
-      if (bitunixOrdersResponse.status === 'fulfilled') {
-        bitunixOrders = bitunixOrdersResponse.value.data;
+      
+      if (responses[0].status === 'fulfilled') {
+        bitunixData = responses[0].value.data;
       } else {
-        console.error('Bitunix orders error:', bitunixOrdersResponse.reason);
+        console.error('Bitunix error:', responses[0].reason);
       }
-
-             let bitgetOrders = [];
-       if (bitgetOrdersResponse.status === 'fulfilled') {
-         bitgetOrders = bitgetOrdersResponse.value.data;
-       } else {
-         console.error('Bitget orders error:', bitgetOrdersResponse.reason);
-       }
-
-       // Handle Bitget balance
-       let bitgetBalance = null;
-       if (bitgetBalanceResponse.status === 'fulfilled') {
-         bitgetBalance = bitgetBalanceResponse.value.data;
-       } else {
-         console.error('Bitget balance error:', bitgetBalanceResponse.reason);
-       }
+      
+      if (responses[1].status === 'fulfilled') {
+        bitunixOrders = responses[1].value.data;
+      } else {
+        console.error('Bitunix orders error:', responses[1].reason);
+      }
+      
+      // Handle Bitget data (only if available)
+      let bitgetData = null;
+      let bitgetOrders = [];
+      let bitgetBalance = null;
+      
+      if (isBitgetAvailable) {
+        if (responses[2].status === 'fulfilled') {
+          bitgetData = responses[2].value.data;
+        } else {
+          console.error('Bitget error:', responses[2].reason);
+        }
+        
+        if (responses[3].status === 'fulfilled') {
+          bitgetOrders = responses[3].value.data;
+        } else {
+          console.error('Bitget orders error:', responses[3].reason);
+        }
+        
+        if (responses[4].status === 'fulfilled') {
+          bitgetBalance = responses[4].value.data;
+        } else {
+          console.error('Bitget balance error:', responses[4].reason);
+        }
+      }
 
       // Combine the data
       let combinedData = { ...bitunixData };
@@ -155,20 +183,43 @@ const AssetOverview = () => {
          });
        });
 
-             console.log('Current orders by symbol:', ordersBySymbol);
+       console.log('Current orders by symbol:', ordersBySymbol);
        setCurrentOrders(ordersBySymbol);
-       setAnalysisData(combinedData);
+       setAssetData(combinedData);
        // Store Bitget balance for USDT calculation
        if (bitgetBalance) {
-         localStorage.setItem('bitgetBalance', JSON.stringify(bitgetBalance));
+         // Add Bitget USDT balance to the combined data
+         if (combinedData.assets) {
+           const existingUsdt = combinedData.assets.find(asset => asset.symbol === 'USDT');
+           if (existingUsdt) {
+             existingUsdt.current_balance += bitgetBalance.USDT || 0;
+           } else {
+             combinedData.assets.push({
+               symbol: 'USDT',
+               current_balance: bitgetBalance.USDT || 0,
+               current_price: 1,
+               average_entry_price: 1,
+               total_buy_quantity: bitgetBalance.USDT || 0,
+               total_buy_value: bitgetBalance.USDT || 0,
+               unrealized_pnl: 0,
+               unrealized_pnl_percentage: 0,
+               number_of_orders: 0,
+               relevant_orders: []
+             });
+           }
+         }
        }
-       setError(null);
-    } catch (err) {
-      setError(`Failed to fetch asset overview data: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+     } catch (error) {
+       console.error('Error fetching asset overview:', error);
+       setError('Failed to fetch asset overview');
+     } finally {
+       setLoading(false);
+     }
+   };
+
+   useEffect(() => {
+     fetchAssetOverview();
+   }, []);
 
   const formatDate = (dateString) => {
     if (!dateString || dateString === '') return 'N/A';
@@ -290,9 +341,9 @@ const AssetOverview = () => {
   };
 
   const getBitunixUsdtBalance = () => {
-    if (!analysisData || !analysisData.assets) return 0;
+    if (!assetData || !assetData.assets) return 0;
     // Find USDT balance from Bitunix assets only
-    const usdtAsset = analysisData.assets.find(asset => asset.symbol === 'USDT');
+    const usdtAsset = assetData.assets.find(asset => asset.symbol === 'USDT');
     return usdtAsset ? usdtAsset.current_balance : 0;
   };
 
@@ -313,16 +364,16 @@ const AssetOverview = () => {
    };
 
   const calculateBitunixTotalCost = () => {
-    if (!analysisData || !analysisData.assets) return 0;
-    const cryptoCost = analysisData.assets
+    if (!assetData || !assetData.assets) return 0;
+    const cryptoCost = assetData.assets
       .filter(asset => asset.symbol !== 'USDT' && !asset.symbol.includes('(BGet)') && asset.total_buy_value !== undefined)
       .reduce((total, asset) => total + (asset.total_buy_value || 0), 0);
     return cryptoCost;
   };
 
   const calculateBitunixTotalCurrentValue = () => {
-    if (!analysisData || !analysisData.assets) return 0;
-    const cryptoValue = analysisData.assets
+    if (!assetData || !assetData.assets) return 0;
+    const cryptoValue = assetData.assets
       .filter(asset => asset.symbol !== 'USDT' && !asset.symbol.includes('(BGet)') && asset.current_balance !== undefined && asset.current_price !== undefined)
       .reduce((total, asset) => {
         const currentValue = (asset.current_balance || 0) * (asset.current_price || 0);
@@ -332,16 +383,16 @@ const AssetOverview = () => {
   };
 
   const calculateBitgetTotalCost = () => {
-    if (!analysisData || !analysisData.assets) return 0;
-    const cryptoCost = analysisData.assets
+    if (!assetData || !assetData.assets) return 0;
+    const cryptoCost = assetData.assets
       .filter(asset => asset.symbol.includes('(BGet)') && asset.total_buy_value !== undefined)
       .reduce((total, asset) => total + (asset.total_buy_value || 0), 0);
     return cryptoCost;
   };
 
   const calculateBitgetTotalCurrentValue = () => {
-    if (!analysisData || !analysisData.assets) return 0;
-    const cryptoValue = analysisData.assets
+    if (!assetData || !assetData.assets) return 0;
+    const cryptoValue = assetData.assets
       .filter(asset => asset.symbol.includes('(BGet)') && asset.current_balance !== undefined && asset.current_price !== undefined)
       .reduce((total, asset) => {
         const currentValue = (asset.current_balance || 0) * (asset.current_price || 0);
@@ -378,7 +429,7 @@ const AssetOverview = () => {
     );
   }
 
-  if (!analysisData || !analysisData.assets) {
+  if (!assetData || !assetData.assets) {
     return (
       <div className="w-full h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
@@ -410,8 +461,15 @@ const AssetOverview = () => {
           Balance-relevant orders and calculations for all assets
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-500">
-          Last updated: {analysisData.timestamp ? formatDate(analysisData.timestamp) : 'N/A'}
+          Last updated: {assetData.timestamp ? formatDate(assetData.timestamp) : 'N/A'}
         </p>
+        {!bitgetAvailable && (
+          <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+            <p className="text-xs text-yellow-700 dark:text-yellow-300">
+              ⚠️ Bitget API not configured. Only Bitunix data is displayed.
+            </p>
+          </div>
+        )}
       </div>
 
              {/* Portfolio Summary - Split into Bitunix and Bitget side by side */}
@@ -464,42 +522,53 @@ const AssetOverview = () => {
              </span>
              Portfolio Summary
            </h2>
-           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
-               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
-               <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
-             </div>
-             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
-               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
-               <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
-               <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                 + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
+           {bitgetAvailable ? (
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
+                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
+                 <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
+               </div>
+               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
+                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
+                 <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
+                 <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                   + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
+                 </div>
+               </div>
+               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
+                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
+                 <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
+                 <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                   + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
+                 </div>
+               </div>
+               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
+                 <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                   ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
+                 </div>
+                 <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
                </div>
              </div>
-             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
-               <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
-               <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
-               <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                 + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
+           ) : (
+             <div className="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm text-gray-500 dark:text-gray-400">
+                 Bitget API not configured
+               </div>
+               <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                 Set BITGET_API_KEY, BITGET_API_SECRET, and BITGET_PASSPHRASE environment variables
                </div>
              </div>
-             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
-               <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                 ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
-               </div>
-               <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
-             </div>
-           </div>
+           )}
          </div>
        </div>
 
              {/* Assets Grid - Full width, 5 columns on extra large screens, 2 on large, 1 on mobile */}
        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-3 w-full">
-        {analysisData.assets
+        {assetData.assets
           .filter(asset => asset.symbol !== 'USDT' && asset) // Exclude USDT from asset tables and ensure asset exists
           .map((asset, index) => {
           try {
