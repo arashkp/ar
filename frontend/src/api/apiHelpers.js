@@ -400,5 +400,31 @@ export function addResponseInterceptor(interceptor) {
     apiClient.interceptors.response.use(interceptor);
 }
 
+/**
+ * Check if Bitget API is available by attempting a lightweight health check
+ * 
+ * @returns {Promise<boolean>} True if Bitget API is available
+ */
+export async function checkBitgetAvailability() {
+  try {
+    // Try to make a lightweight request to check if Bitget is configured
+    const response = await apiGet('bitget/balance', {}, { 
+      retryAttempts: 1, 
+      retryDelay: 1000 
+    });
+    
+    // If we get a 503 (Service Unavailable), Bitget is not configured
+    if (response.status === 503) {
+      return false;
+    }
+    
+    // For other errors, assume Bitget might be available but having issues
+    return response.success;
+  } catch (error) {
+    // If the request fails completely, assume Bitget is not available
+    return false;
+  }
+}
+
 // Export the API client for direct use if needed
 export { apiClient }; 

@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useTheme } from '../context/ThemeContext';
+import {
+  getHistoricalPerformance,
+  getPerformanceColor,
+  getTimeframeDisplayName
+} from '../api/historical';
+import { checkBitgetAvailability as checkBitgetAvailabilityHelper } from '../api/apiHelpers';
 
 const AssetOverview = () => {
   const [assetData, setAssetData] = useState(null);
@@ -9,21 +16,13 @@ const AssetOverview = () => {
   const [bitgetAvailable, setBitgetAvailable] = useState(false);
 
   // Check if Bitget API is available
-  const checkBitgetAvailability = async () => {
+  const checkBitgetAvailabilityLocal = async () => {
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-      const apiKey = localStorage.getItem('apiKey');
-      const headers = apiKey ? { 'X-API-Key': apiKey } : {};
-      
-      const response = await axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers });
-      return response.status === 200;
+      // Use the new API helper function
+      return await checkBitgetAvailabilityHelper();
     } catch (error) {
-      // If we get 503 (Service Unavailable), Bitget is not configured
-      if (error.response?.status === 503) {
-        return false;
-      }
-      // For other errors, assume Bitget might be available but having issues
-      return true;
+      console.error('Error checking Bitget availability:', error);
+      return false;
     }
   };
 
@@ -36,9 +35,9 @@ const AssetOverview = () => {
       const apiKey = localStorage.getItem('apiKey');
       const headers = apiKey ? { 'X-API-Key': apiKey } : {};
       
-      // Check Bitget availability first
-      const isBitgetAvailable = await checkBitgetAvailability();
-      setBitgetAvailable(isBitgetAvailable);
+          // Check Bitget availability first
+    const isBitgetAvailable = await checkBitgetAvailabilityLocal();
+    setBitgetAvailable(isBitgetAvailable);
       
       // Prepare API calls based on availability
       const apiCalls = [
@@ -463,17 +462,11 @@ const AssetOverview = () => {
         <p className="text-xs text-gray-500 dark:text-gray-500">
           Last updated: {assetData.timestamp ? formatDate(assetData.timestamp) : 'N/A'}
         </p>
-        {!bitgetAvailable && (
-          <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-            <p className="text-xs text-yellow-700 dark:text-yellow-300">
-              ⚠️ Bitget API not configured. Only Bitunix data is displayed.
-            </p>
-          </div>
-        )}
+        
       </div>
 
-             {/* Portfolio Summary - Split into Bitunix and Bitget side by side */}
-       <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+             {/* Portfolio Summary - Dynamic grid based on exchange availability */}
+       <div className={`mb-6 grid gap-4 ${bitgetAvailable ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
          {/* Bitunix Summary */}
          <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
            <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
@@ -514,63 +507,54 @@ const AssetOverview = () => {
            </div>
          </div>
 
-         {/* Bitget Summary */}
-         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
-             <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-xs mr-2">
-               Bitget
-             </span>
-             Portfolio Summary
-           </h2>
-           {bitgetAvailable ? (
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
-                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
-               </div>
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
-                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
-                 <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                   + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
-                 </div>
-               </div>
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
-                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
-                 <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                   + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
-                 </div>
-               </div>
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
-                 <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                   ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
-                 </div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
-               </div>
-             </div>
-           ) : (
-             <div className="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-               <div className="text-sm text-gray-500 dark:text-gray-400">
-                 Bitget API not configured
-               </div>
-               <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                 Set BITGET_API_KEY, BITGET_API_SECRET, and BITGET_PASSPHRASE environment variables
-               </div>
-             </div>
-           )}
-         </div>
+                   {/* Bitget Summary - Only show when available */}
+          {bitgetAvailable && (
+            <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+              <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
+                <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-xs mr-2">
+                  Bitget
+                </span>
+                Portfolio Summary
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
+                  <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
+                  <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                    + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
+                  <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                    + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
+                  <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
+                </div>
+              </div>
+            </div>
+          )}
        </div>
 
-             {/* Assets Grid - Full width, 5 columns on extra large screens, 2 on large, 1 on mobile */}
-       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-3 w-full">
-        {assetData.assets
-          .filter(asset => asset.symbol !== 'USDT' && asset) // Exclude USDT from asset tables and ensure asset exists
-          .map((asset, index) => {
+             {/* Assets Grid - Dynamic columns based on exchange availability */}
+       <div className={`grid gap-3 w-full ${bitgetAvailable ? 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-5' : 'grid-cols-1 lg:grid-cols-3 xl:grid-cols-6'}`}>
+                 {assetData.assets
+           .filter(asset => asset.symbol !== 'USDT' && asset && (bitgetAvailable || !asset.symbol.includes('(BGet)'))) // Exclude USDT and Bitget assets when Bitget not available
+           .map((asset, index) => {
           try {
             const currentValue = (asset.current_balance || 0) * (asset.current_price || 0);
             const costValue = asset.total_buy_value || 0;

@@ -13,6 +13,7 @@ const DashboardPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [bitgetAvailable, setBitgetAvailable] = useState(true);
 
   // State for Order Entry Form integration
   const [selectedSymbol, setSelectedSymbol] = useState(''); // Could be e.g., 'BTCUSDT'
@@ -61,7 +62,20 @@ const DashboardPage = () => {
 
   useEffect(() => {
     fetchData();
+    checkBitgetAvailability();
   }, []);
+
+  // Check if Bitget API is available
+  const checkBitgetAvailability = async () => {
+    try {
+      const { checkBitgetAvailability: checkBitget } = await import('../api/apiHelpers');
+      const isAvailable = await checkBitget();
+      setBitgetAvailable(isAvailable);
+    } catch (error) {
+      console.error('Error checking Bitget availability:', error);
+      setBitgetAvailable(false);
+    }
+  };
 
   // Handler for when a price is clicked in SymbolOverview
   const handlePriceClick = (price, symbol, sideFromClick) => {
@@ -227,6 +241,7 @@ const DashboardPage = () => {
                   setSide={setSide}
                   predefinedVolumeUSDT={predefinedVolumeUSDT}
                   setPredefinedVolumeUSDT={setPredefinedVolumeUSDT}
+                  bitgetAvailable={bitgetAvailable}
                 />
               </div>
             </div>

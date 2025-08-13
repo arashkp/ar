@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { placeOrder } from '../api/orders'; // Assuming this path is correct
 
-const EXCHANGES = ['MEXC', 'Bitget', 'Bitunix'];
-
-const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefinedVolumeUSDT, setPredefinedVolumeUSDT }) => {
+const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefinedVolumeUSDT, setPredefinedVolumeUSDT, bitgetAvailable = true }) => {
   // Defensive fallback for undefined props
   const safePredefinedVolume = predefinedVolumeUSDT !== undefined && predefinedVolumeUSDT !== null ? predefinedVolumeUSDT : '100';
+  
+  // Filter exchanges based on availability
+  const availableExchanges = bitgetAvailable ? ['MEXC', 'Bitget', 'Bitunix'] : ['MEXC', 'Bitunix'];
+  
   // State for form inputs
   const [symbol, setSymbol] = useState('');
   const [price, setPrice] = useState(''); // For LIMIT orders
   const [amount, setAmount] = useState(''); // Amount in base asset
   const [type, setType] = useState('LIMIT'); // 'LIMIT' or 'MARKET'
-  const [selectedExchange, setSelectedExchange] = useState(EXCHANGES[0]); // Default to MEXC
+  const [selectedExchange, setSelectedExchange] = useState(availableExchanges[0]); // Default to first available exchange
 
   // State for API interaction
   const [isLoading, setIsLoading] = useState(false);
@@ -172,7 +174,7 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
 
       {/* Exchange Selector */}
       <div className="mb-4 flex justify-center gap-x-2">
-        {EXCHANGES.map((exchange) => {
+        {availableExchanges.map((exchange) => {
           // Use a consistent blue/gray tone for all buttons
           const isSelected = selectedExchange === exchange;
           const colorClasses = isSelected
