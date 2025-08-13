@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from datetime import datetime, timezone
+import ccxt
 
 from src.main import app # app is needed for TestClient, but not used directly in patch
 from src.schemas.order_schema import OrderRequest, OrderResponse # For type hints and validation
@@ -16,7 +17,8 @@ from src.database.models import Order # For mock service return types
 # For these tests, we are patching the service, so direct asyncio marking per test is not strictly needed.
 
 @patch('src.services.order_manager.place_order', new_callable=AsyncMock)
-def test_place_order_api_success(mock_place_order_service, test_client: TestClient):
+def test_place_order_api_success(mock_place_order_service, client):
+    test_client, _ = client
     # Prepare mock service response
     # The service returns a SQLAlchemy Order model instance
     mock_order_db = Order(
@@ -80,7 +82,8 @@ def test_place_order_api_success(mock_place_order_service, test_client: TestClie
     assert called_with_order_request.price == order_payload["price"]
 
 
-def test_place_order_api_validation_error(test_client: TestClient):
+def test_place_order_api_validation_error(client):
+    test_client, _ = client
     # Limit order missing price
     order_payload = {
         "exchange_id": "binance",
@@ -99,7 +102,8 @@ def test_place_order_api_validation_error(test_client: TestClient):
     # assert "price" in response_data["detail"][0]["loc"] # Example check
 
 @patch('src.services.order_manager.place_order', new_callable=AsyncMock)
-def test_place_order_api_insufficient_funds(mock_place_order_service, test_client: TestClient):
+def test_place_order_api_insufficient_funds(mock_place_order_service, client):
+    test_client, _ = client
     # Mock service to return an order with 'rejected_insufficient_funds' status
     mock_order_db_rejected = Order(
         id=2,
@@ -139,7 +143,8 @@ def test_place_order_api_insufficient_funds(mock_place_order_service, test_clien
 
 
 @patch('src.services.order_manager.place_order', new_callable=AsyncMock)
-def test_place_order_api_generic_rejection(mock_place_order_service, test_client: TestClient):
+def test_place_order_api_generic_rejection(mock_place_order_service, client):
+    test_client, _ = client
     # Mock service to return an order with a generic 'rejected' status
     mock_order_db_rejected = Order(
         id=3,
@@ -177,7 +182,8 @@ def test_place_order_api_generic_rejection(mock_place_order_service, test_client
 # Example of testing ccxt exception handling if the service re-raises it
 # and the router catches it.
 @patch('src.services.order_manager.place_order', new_callable=AsyncMock)
-def test_place_order_api_ccxt_exchange_error(mock_place_order_service, test_client: TestClient):
+def test_place_order_api_ccxt_exchange_error(mock_place_order_service, client):
+    test_client, _ = client
     # Mock service to raise a ccxt.ExchangeError
     # This simulates the service not catching the error, or re-raising it.
     # The API router has try-except blocks for these.

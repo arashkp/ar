@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text
 from sqlalchemy.sql import func
-from src.database.base import BaseModel
+from src.database.base import BaseModel, DecimalType
 from datetime import datetime
 
 class Order(BaseModel):
@@ -11,15 +11,15 @@ class Order(BaseModel):
     exchange_id = Column(String)
     symbol = Column(String)
     timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
-    price = Column(Float)
-    amount = Column(Float)
+    price = Column(DecimalType)
+    amount = Column(DecimalType)
     side = Column(String)
     type = Column(String)
     status = Column(String)
-    filled_amount = Column(Float, default=0.0)
-    remaining_amount = Column(Float) # Should default to amount, handled in __init__ or by application logic
-    cost = Column(Float) # price * amount, handled in __init__ or by application logic
-    fee = Column(Float, nullable=True, default=0.0)
+    filled_amount = Column(DecimalType, default=0.0)
+    remaining_amount = Column(DecimalType) # Should default to amount, handled in __init__ or by application logic
+    cost = Column(DecimalType) # price * amount, handled in __init__ or by application logic
+    fee = Column(DecimalType, nullable=True, default=0.0)
     fee_currency = Column(String, nullable=True)
     is_spot = Column(Boolean)
     client_order_id = Column(String, nullable=True)
@@ -40,13 +40,13 @@ class Trade(BaseModel):
     exchange_id = Column(String)
     symbol = Column(String)
     timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
-    price = Column(Float)
-    amount = Column(Float)
+    price = Column(DecimalType)
+    amount = Column(DecimalType)
     side = Column(String)  # 'buy' or 'sell'
     type = Column(String)  # 'market' or 'limit'
-    fee = Column(Float, nullable=True, default=0.0)
+    fee = Column(DecimalType, nullable=True, default=0.0)
     fee_currency = Column(String, nullable=True)
-    pnl = Column(Float, nullable=True)  # Profit/Loss for the trade
+    pnl = Column(DecimalType, nullable=True)  # Profit/Loss for the trade
     is_spot = Column(Boolean, default=True)
     order_id = Column(Integer, nullable=True)  # Reference to the order that created this trade
 

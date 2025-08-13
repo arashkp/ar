@@ -19,15 +19,19 @@ class Settings(BaseSettings):
     # model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 
     # These allow fetching from environment variables like BITGET_API_KEY etc.
-    # BITGET_API_KEY: str | None = None
-    # BITGET_API_SECRET: str | None = None
-    # BITGET_PASSWORD: str | None = None # Passphrase, if required by Bitget
-    #
-    # MEXC_API_KEY: str | None = None
-    # MEXC_API_SECRET: str | None = None
-    #
-    # BITUNIX_API_KEY: str | None = None
-    # BITUNIX_API_SECRET: str | None = None
+    BITGET_API_KEY: str | None = None
+    BITGET_API_SECRET: str | None = None
+    BITGET_PASSWORD: str | None = None # Passphrase, if required by Bitget
+
+    MEXC_API_KEY: str | None = None
+    MEXC_API_SECRET: str | None = None
+
+    BITUNIX_API_KEY: str | None = None
+    BITUNIX_API_SECRET: str | None = None
+
+    BINANCE_API_KEY: str | None = None
+    BINANCE_API_SECRET: str | None = None
+
 
     model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 

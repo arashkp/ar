@@ -5,6 +5,7 @@ import pandas as pd
 from pandas import DataFrame, Series # For mocking pandas_ta
 from typing import List, Dict, Any
 from fastapi import HTTPException # Ensure HTTPException is imported
+import ccxt.async_support as ccxt
 
 # Assuming your FastAPI app structure allows this import
 from src.routers.market_overview import get_market_overview, MarketOverviewItem, LevelItem, SYMBOL_CONFIG # Added LevelItem

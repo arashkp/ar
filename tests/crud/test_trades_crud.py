@@ -4,8 +4,8 @@ from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession # Renamed 
 from decimal import Decimal
 import datetime
 
-from database.database import Base # To create tables
-from database import models # Actual models: Trade, Order, User
+from src.database.base import Base # To create tables
+from src.database import models # Actual models: Trade, Order, User
 from src.schemas import trade_schema # Pydantic schemas for validation
 from src.crud import trades as trades_crud # CRUD functions
 

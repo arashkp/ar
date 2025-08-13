@@ -4,8 +4,13 @@ from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient # Moved import to top
 from src.database.base import Base # Assuming your SQLAlchemy Base is here
 from src.main import app # Your FastAPI app
-from src.database.session import get_db # The dependency to override
+from src.database.session import get_db
+from src.utils.auth import verify_api_key
+from config.config import get_settings, Settings
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Use an in-memory SQLite database for testing for speed, or a file if preferred.
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test_db.db" # Use a separate test DB file
@@ -36,37 +41,19 @@ def override_get_db():
 # Apply the override to the FastAPI app.
 app.dependency_overrides[get_db] = override_get_db
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_db_session():
-    """
-    Fixture to create all tables in the test database once per test session for file-based DB.
-    For in-memory, table creation is often handled per session or test.
-    """
-    if SQLALCHEMY_DATABASE_URL != "sqlite:///:memory:":
-        Base.metadata.create_all(bind=engine) # Create tables for file-based test DB
-    yield
-    if SQLALCHEMY_DATABASE_URL != "sqlite:///:memory:":
-        # Optional: Clean up the test database file after tests run
-        db_file_path = SQLALCHEMY_DATABASE_URL.split("sqlite:///./")[1]
-        # if os.path.exists(db_file_path):
-        #     os.remove(db_file_path) # Commented out to inspect DB after tests
-        pass
-
-
 @pytest.fixture(scope="function")
-def db_session(setup_test_db_session) -> Session:
+def db_session() -> Session:
     """
     Provides a transactional database session for each test function.
-    - For file-based DB: creates tables once per session, then uses transactions per test.
-    - For in-memory DB: creates tables per test essentially (via override_get_db or here).
+    This fixture ensures that each test has a clean database state.
     """
+    # Create tables for each test if using in-memory SQLite, otherwise create once
+    if SQLALCHEMY_DATABASE_URL == "sqlite:///:memory:":
+        Base.metadata.create_all(bind=engine)
+
     connection = engine.connect()
     transaction = connection.begin()
-    # Bind the session to the connection for the transaction
     db = TestingSessionLocal(bind=connection)
-
-    # If you need to ensure tables are created for each test (e.g. if tests modify schema or are destructive)
-    # Base.metadata.create_all(bind=connection) # Creates tables within the transaction
 
     yield db
 
@@ -74,15 +61,40 @@ def db_session(setup_test_db_session) -> Session:
     transaction.rollback()
     connection.close()
 
+    if SQLALCHEMY_DATABASE_URL == "sqlite:///:memory:":
+        Base.metadata.drop_all(bind=engine)
 
-@pytest.fixture(scope="module") # Changed to module for potentially faster test runs if client setup is heavy
-def test_client() -> TestClient:
+
+@pytest.fixture(scope="function")
+def client(db_session):
     """
-    Provides a TestClient for making API requests in tests.
-    This client uses the app with the overridden get_db dependency.
+    Provides a TestClient that is configured for isolated test runs.
+    It handles database, authentication, and settings overrides.
+    Yields both the client and the test settings object.
     """
-    from fastapi.testclient import TestClient
-    # Ensures the app's overridden dependencies are in place before client is created.
-    # Table creation for the test DB should be handled by session-scoped or function-scoped fixtures.
-    client = TestClient(app)
-    return client
+    test_settings = Settings(
+        DATABASE_URL=SQLALCHEMY_DATABASE_URL,
+        EXCHANGE_API_KEY="test_global_key",
+        EXCHANGE_API_SECRET="test_global_secret",
+        BINANCE_API_KEY="binance_test_key_from_settings",
+        BINANCE_API_SECRET="binance_test_secret_from_settings",
+    )
+
+    def override_get_db_for_client():
+        yield db_session
+
+    async def override_verify_api_key_for_client():
+        return True
+
+    def override_get_settings_for_client():
+        return test_settings
+
+    original_overrides = app.dependency_overrides.copy()
+    app.dependency_overrides[get_db] = override_get_db_for_client
+    app.dependency_overrides[verify_api_key] = override_verify_api_key_for_client
+    app.dependency_overrides[get_settings] = override_get_settings_for_client
+
+    with TestClient(app) as c:
+        yield c, test_settings
+
+    app.dependency_overrides = original_overrides

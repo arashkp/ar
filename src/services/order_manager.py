@@ -28,7 +28,8 @@ async def place_order(order_data: OrderRequest, db: Session) -> Order:
     logger.info(f"Attempting to place order: {order_data.symbol} {order_data.side} {order_data.amount} @ {order_data.price or 'market'}")
 
     # Get API keys using helper
-    api_key, api_secret = get_api_keys_from_env(order_data.exchange_id)
+    from src.utils.api_key_manager import get_api_keys_from_env_tuple
+    api_key, api_secret = get_api_keys_from_env_tuple(order_data.exchange_id)
 
     if not api_key or not api_secret:
         logger.error(f"API keys for {order_data.exchange_id} not found in environment variables.")
@@ -162,42 +163,24 @@ async def _place_ccxt_order(order_data: OrderRequest, api_key: str, api_secret: 
 
             return db_order
 
-    except ccxt.InsufficientFunds as e:
-        logger.error(f"Insufficient funds on {order_data.exchange_id}: {e}")
-        # Create an OrderCreate schema with 'rejected_insufficient_funds' status
-        order_to_save = OrderCreate(
-            **order_data.model_dump(),
-            status='rejected_insufficient_funds',
-        )
-        # Persist this rejected order to the database
-        db_order = crud_orders.create_order(db=db, order=order_to_save)
-        return db_order
-    except ccxt.NetworkError as e:
-        logger.error(f"Network error with {order_data.exchange_id}: {e}")
-        # Create an OrderCreate schema with 'rejected_network_error' status
-        order_to_save = OrderCreate(
-            **order_data.model_dump(),
-            status='rejected_network_error',
-        )
-        # Persist this rejected order to the database
-        db_order = crud_orders.create_order(db=db, order=order_to_save)
-        return db_order
-    except ccxt.ExchangeError as e:
-        logger.error(f"Exchange error with {order_data.exchange_id}: {e}")
-        # Create an OrderCreate schema with 'rejected_exchange_error' status
-        order_to_save = OrderCreate(
-            **order_data.model_dump(),
-            status='rejected_exchange_error',
-        )
-        # Persist this rejected order to the database
-        db_order = crud_orders.create_order(db=db, order=order_to_save)
-        return db_order
     except Exception as e:
-        logger.error(f"Unexpected error placing order on {order_data.exchange_id}: {e}")
-        # Create an OrderCreate schema with 'rejected' status
+        status_reason = 'rejected'
+        if isinstance(e, ccxt.InsufficientFunds):
+            logger.error(f"Insufficient funds on {order_data.exchange_id}: {e}")
+            status_reason = 'rejected_insufficient_funds'
+        elif isinstance(e, ccxt.NetworkError):
+            logger.error(f"Network error with {order_data.exchange_id}: {e}")
+            status_reason = 'rejected_network_error'
+        elif isinstance(e, ccxt.ExchangeError):
+            logger.error(f"Exchange error with {order_data.exchange_id}: {e}")
+            status_reason = 'rejected_exchange_error'
+        else:
+            logger.error(f"Unexpected error placing order on {order_data.exchange_id}: {e}")
+
+        # Create an OrderCreate schema with the appropriate rejected status
         order_to_save = OrderCreate(
             **order_data.model_dump(),
-            status='rejected',
+            status=status_reason,
         )
         # Persist this rejected order to the database
         db_order = crud_orders.create_order(db=db, order=order_to_save)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Optional
 from src.services.trading_api import fetch_ohlcv as fetch_ohlcv_service, fetch_balance as fetch_balance_service
-from src.core.config import Settings, settings
+from src.core.config import Settings, get_settings
 from sqlalchemy.orm import Session
 from src.utils.error_handlers import exchange_error_handler, api_error_handler
 from src.utils.api_key_manager import get_api_keys_for_public_data, get_api_keys_for_private_data
@@ -18,7 +18,7 @@ async def get_ohlcv(
     # API keys are optional for public data like OHLCV on many exchanges
     api_key: Optional[str] = None,
     api_secret: Optional[str] = None,
-    settings: Settings = Depends(lambda: settings) # Allow global settings if keys are there
+    settings: Settings = Depends(get_settings) # Allow global settings if keys are there
 ):
     """
     Fetches OHLCV (Open, High, Low, Close, Volume) data for a specific symbol
@@ -49,7 +49,7 @@ async def get_balance(
     # API keys can be passed as query params or ideally loaded from config/env
     api_key: Optional[str] = None,
     api_secret: Optional[str] = None,
-    settings: Settings = Depends(lambda: settings)
+    settings: Settings = Depends(get_settings)
 ):
     """
     Fetches account balance from a specific exchange.

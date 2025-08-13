@@ -15,15 +15,17 @@ const AssetOverview = () => {
       const apiKey = localStorage.getItem('apiKey');
       const headers = apiKey ? { 'X-API-Key': apiKey } : {};
       
-      const response = await axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers });
+      // Use a timeout to prevent long waits
+      const response = await axios.get(`${apiBaseUrl}/api/v1/bitget/balance`, { headers, timeout: 5000 });
+      // If we get a successful response, Bitget is available
       return response.status === 200;
     } catch (error) {
-      // If we get 503 (Service Unavailable), Bitget is not configured
+      // If the error is a 503, it means the service is unavailable (not configured)
       if (error.response?.status === 503) {
         return false;
       }
-      // For other errors, assume Bitget might be available but having issues
-      return true;
+      // For any other error (including timeouts), we can assume it's not available or not responsive
+      return false;
     }
   };
 
@@ -473,9 +475,9 @@ const AssetOverview = () => {
       </div>
 
              {/* Portfolio Summary - Split into Bitunix and Bitget side by side */}
-       <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+       <div className={`mb-6 grid grid-cols-1 ${bitgetAvailable ? 'lg:grid-cols-2' : 'lg:grid-cols-1'} gap-4`}>
          {/* Bitunix Summary */}
-         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+         <div className={`p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md ${!bitgetAvailable ? 'w-full' : ''}`}>
            <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
              <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs mr-2">
                Bitunix
@@ -514,56 +516,47 @@ const AssetOverview = () => {
            </div>
          </div>
 
-         {/* Bitget Summary */}
-         <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-           <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
-             <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-xs mr-2">
-               Bitget
-             </span>
-             Portfolio Summary
-           </h2>
-           {bitgetAvailable ? (
+         {/* Bitget Summary - Only show if available */}
+         {bitgetAvailable && (
+           <div className="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+             <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-3 flex items-center">
+               <span className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-xs mr-2">
+                 Bitget
+               </span>
+               Portfolio Summary
+             </h2>
              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
-                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
-               </div>
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
-                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
-                 <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                   + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
+                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                   <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
+                   <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetUsdtBalance)}</div>
+                   <div className="text-xs text-gray-500 dark:text-gray-500">Available USDT</div>
+                 </div>
+                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                   <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total Cost</div>
+                   <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCost)}</div>
+                   <div className="text-xs text-gray-500 dark:text-gray-500">Crypto invested</div>
+                   <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                     + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCost + bitgetUsdtBalance)}
+                   </div>
+                 </div>
+                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                   <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
+                   <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
+                   <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
+                   <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
+                     + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
+                   </div>
+                 </div>
+                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                   <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
+                   <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                     ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
+                   </div>
+                   <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
                  </div>
                </div>
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Value</div>
-                 <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitgetTotalCurrentValue)}</div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Total crypto value now</div>
-                 <div className="text-xs text-gray-400 dark:text-gray-400 mt-1">
-                   + ${formatValue(bitgetUsdtBalance)} USDT = ${formatValue(bitgetTotalCurrentValue + bitgetUsdtBalance)}
-                 </div>
-               </div>
-               <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                 <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Total P&L</div>
-                 <div className={`text-xl font-bold ${bitgetTotalPnL >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                   ${formatValue(bitgetTotalPnL)} ({bitgetTotalPnLPercentage.toFixed(2)}%)
-                 </div>
-                 <div className="text-xs text-gray-500 dark:text-gray-500">Overall profit/loss</div>
-               </div>
-             </div>
-           ) : (
-             <div className="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-               <div className="text-sm text-gray-500 dark:text-gray-400">
-                 Bitget API not configured
-               </div>
-               <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                 Set BITGET_API_KEY, BITGET_API_SECRET, and BITGET_PASSPHRASE environment variables
-               </div>
-             </div>
-           )}
-         </div>
+           </div>
+         )}
        </div>
 
              {/* Assets Grid - Full width, 5 columns on extra large screens, 2 on large, 1 on mobile */}
@@ -576,7 +569,13 @@ const AssetOverview = () => {
             const costValue = asset.total_buy_value || 0;
             const assetPnL = currentValue - costValue;
             const assetPnLPercentage = costValue > 0 ? (assetPnL / costValue) * 100 : 0;
-            
+            const openOrders = (currentOrders[asset.symbol] ||
+              (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
+              (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
+              currentOrders[asset.symbol.replace('/USDT', '')] ||
+              currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
+             ) || [];
+
             return (
                              <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 w-full">
                 {/* Asset Header */}
@@ -639,84 +638,69 @@ const AssetOverview = () => {
                   </div>
                 </div>
 
-                                 {/* Current Orders Table */}
-                 {(currentOrders[asset.symbol] || 
-                   (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
-                   (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
-                   currentOrders[asset.symbol.replace('/USDT', '')] ||
-                   currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
-                  ) && (currentOrders[asset.symbol] || 
-                        (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
-                        (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
-                        currentOrders[asset.symbol.replace('/USDT', '')] ||
-                        currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
-                       ).length > 0 && (
-                                        <div className="mb-3 w-full">
-                       <h3 className="text-sm font-semibold mb-1 text-gray-800 dark:text-white">
-                         Current Orders ({(currentOrders[asset.symbol] || 
-                           (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
-                           (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
-                           currentOrders[asset.symbol.replace('/USDT', '')] ||
-                           currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
-                          ).length})
-                       </h3>
-                       <div className="w-full">
-                         <table className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-                           <thead className="bg-gray-50 dark:bg-gray-700">
-                             <tr>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Side
-                               </th>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Type
-                               </th>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Price
-                               </th>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Qty
-                               </th>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Filled
-                               </th>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Status
-                               </th>
-                             </tr>
-                           </thead>
-                           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                          {(currentOrders[asset.symbol] || 
-                               (asset.symbol === 'HYPE (BGet)' && currentOrders['HYPE']) ||
-                               (asset.symbol.includes('(BGet)') && currentOrders[asset.symbol.replace(' (BGet)', '')]) ||
-                               currentOrders[asset.symbol.replace('/USDT', '')] ||
-                               currentOrders[asset.symbol.replace('/USDT', '') + '/USDT']
-                              ).map((order, orderIndex) => (
-                               <tr key={orderIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                 <td className={`px-2 py-1 text-xs font-mono ${order.side?.toLowerCase() === 'buy' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                   {order.side?.toUpperCase() || 'N/A'}
-                                 </td>
-                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                                 {order.order_type || order.type || 'N/A'}
-                               </td>
-                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                                 ${formatPrice(order.price || 0)}
-                               </td>
-                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                                 {formatQuantity(order.quantity || order.amount || 0)}
-                               </td>
-                               <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
-                                 {formatQuantity(order.filled_quantity || 0)}
-                               </td>
-                               <td className={`px-2 py-1 text-xs font-mono ${getOrderStatusColor(order.status)}`}>
-                                 {formatOrderStatus(order.status)}
-                               </td>
-                             </tr>
-                           ))}
-                         </tbody>
-                       </table>
-                     </div>
-                   </div>
-                 )}
+                {/* Unfilled Orders Table */}
+                {/* This table will only be rendered if there are open orders for the asset. */}
+                {openOrders.length > 0 ? (
+                  <div className="mb-3 w-full">
+                    <h3 className="text-sm font-semibold mb-1 text-gray-800 dark:text-white">
+                      Unfilled Orders ({openOrders.length})
+                    </h3>
+                    <div className="w-full">
+                      <table className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                          <tr>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Side
+                            </th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Type
+                            </th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Price
+                            </th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Qty
+                            </th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Filled
+                            </th>
+                            <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          {openOrders.map((order, orderIndex) => (
+                            <tr key={orderIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                              <td className={`px-2 py-1 text-xs font-mono ${order.side?.toLowerCase() === 'buy' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {order.side?.toUpperCase() || 'N/A'}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                {order.order_type || order.type || 'N/A'}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                ${formatPrice(order.price || 0)}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                {formatQuantity(order.quantity || order.amount || 0)}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
+                                {formatQuantity(order.filled_quantity || 0)}
+                              </td>
+                              <td className={`px-2 py-1 text-xs font-mono ${getOrderStatusColor(order.status)}`}>
+                                {formatOrderStatus(order.status)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mb-3 w-full text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+                    No unfilled orders.
+                  </div>
+                )}
 
                  {/* History Orders Table - Show ALL orders */}
                  <div className="mb-3 w-full">
