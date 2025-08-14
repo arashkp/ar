@@ -2,6 +2,7 @@ import './App.css';
 import { useState, useEffect } from 'react';
 import DashboardPage from './pages/DashboardPage.jsx';
 import AssetOverview from './pages/BackwardAnalysis.jsx';
+import FundingRatesPage from './pages/FundingRatesPage.jsx';
 import Navigation from './components/Navigation.jsx';
 import LoginForm from './components/LoginForm.jsx';
 import TelegramControl from './components/TelegramControl.jsx';
@@ -100,6 +101,8 @@ function App() {
         return <AssetOverview />;
       case 'telegram':
         return <TelegramControl />;
+      case 'funding-rates':
+        return <FundingRatesPage />;
       default:
         return <DashboardPage />;
     }

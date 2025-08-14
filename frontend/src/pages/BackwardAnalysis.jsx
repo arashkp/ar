@@ -551,7 +551,7 @@ const AssetOverview = () => {
        </div>
 
              {/* Assets Grid - Dynamic columns based on exchange availability */}
-       <div className={`grid gap-3 w-full ${bitgetAvailable ? 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-5' : 'grid-cols-1 lg:grid-cols-3 xl:grid-cols-6'}`}>
+       <div className={`grid gap-3 w-full ${bitgetAvailable ? 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-5' : 'grid-cols-1 lg:grid-cols-3 xl:grid-cols-5'}`}>
                  {assetData.assets
            .filter(asset => asset.symbol !== 'USDT' && asset && (bitgetAvailable || !asset.symbol.includes('(BGet)'))) // Exclude USDT and Bitget assets when Bitget not available
            .map((asset, index) => {

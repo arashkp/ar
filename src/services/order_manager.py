@@ -15,7 +15,7 @@ from src.utils.exchange_helpers import (
     safe_exchange_operation
 )
 from src.utils.error_handlers import handle_ccxt_exception, handle_generic_exception
-from src.services.mexc_service import MEXCService
+# from src.services.mexc_service import MEXCService  # MEXC service commented out due to reliability issues
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,62 +42,62 @@ async def place_order(order_data: OrderRequest, db: Session) -> Order:
         db_order = crud_orders.create_order(db=db, order=order_to_save)
         return db_order
 
-    # Route MEXC orders to dedicated service
-    if order_data.exchange_id.lower() == 'mexc':
-        return await _place_mexc_order(order_data, api_key, api_secret, db)
+    # MEXC orders are no longer supported due to reliability issues
+    # if order_data.exchange_id.lower() == 'mexc':
+    #     return await _place_mexc_order(order_data, api_key, api_secret, db)
     else:
         return await _place_ccxt_order(order_data, api_key, api_secret, db)
 
 
-async def _place_mexc_order(order_data: OrderRequest, api_key: str, api_secret: str, db: Session) -> Order:
-    """
-    Place order using MEXC SDK.
-    """
-    try:
-        logger.info(f"Using MEXC SDK for order placement")
-        
-        # Initialize MEXC service
-        mexc_service = MEXCService(api_key=api_key, api_secret=api_secret)
-        
-        # Place order using MEXC SDK
-        mexc_response = await mexc_service.place_order(
-            symbol=order_data.symbol,
-            side=order_data.side,
-            order_type=order_data.type,
-            quantity=order_data.amount,
-            price=order_data.price,
-            client_order_id=order_data.client_order_id
-        )
-        
-        logger.info(f"MEXC order placed successfully: {mexc_response}")
-        
-        # Parse MEXC response
-        parsed_data = mexc_service.parse_order_response(mexc_response, order_data.model_dump())
-        order_to_save = OrderCreate(**parsed_data)
-        
-        # Save to database
-        db_order = crud_orders.create_order(db=db, order=order_to_save)
-        logger.info(f"MEXC order saved to database with ID: {db_order.id}")
-        
-        return db_order
-        
-    except HTTPException:
-        # Re-raise HTTPException directly
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error placing MEXC order: {e}")
-        # Create rejected order
-        order_to_save = OrderCreate(
-            **order_data.model_dump(),
-            status='rejected',
-        )
-        db_order = crud_orders.create_order(db=db, order=order_to_save)
-        return db_order
+# async def _place_mexc_order(order_data: OrderRequest, api_key: str, api_secret: str, db: Session) -> Order:
+#     """
+#     Place order using MEXC SDK.
+#     """
+#     try:
+#         logger.info(f"Using MEXC SDK for order placement")
+#         
+#         # Initialize MEXC service
+#         mexc_service = MEXCService(api_key=api_key, api_secret=api_secret)
+#         
+#         # Place order using MEXC SDK
+#         mexc_response = await mexc_service.place_order(
+#             symbol=order_data.symbol,
+#             side=order_data.side,
+#             order_type=order_data.type,
+#             quantity=order_data.amount,
+#             price=order_data.price,
+#             client_order_id=order_data.client_order_id
+#         )
+#         
+#         logger.info(f"MEXC order placed successfully: {mexc_response}")
+#         
+#         # Parse MEXC response
+#         parsed_data = mexc_service.parse_order_response(mexc_response, order_data.model_dump())
+#         order_to_save = OrderCreate(**parsed_data)
+#         
+#         # Save to database
+#         db_order = crud_orders.create_order(db=db, order=order_to_save)
+#         logger.info(f"MEXC order saved to database with ID: {db_order.id}")
+#         
+#         return db_order
+#         
+#     except HTTPException:
+#         # Re-raise HTTPException directly
+#         raise
+#     except Exception as e:
+#         logger.error(f"Unexpected error placing MEXC order: {e}")
+#         # Create rejected order
+#         order_to_save = OrderCreate(
+#             **order_data.model_dump(),
+#             status='rejected',
+#         )
+#         db_order = crud_orders.create_order(db=db, order=order_to_save)
+#         return db_order
 
 
 async def _place_ccxt_order(order_data: OrderRequest, api_key: str, api_secret: str, db: Session) -> Order:
     """
-    Place order using CCXT (for non-MEXC exchanges).
+    Place order using CCXT (for all supported exchanges).
     """
     try:
         # Initialize exchange using helper

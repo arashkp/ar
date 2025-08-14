@@ -10,7 +10,7 @@ const Navigation = ({ currentPage, onPageChange, onLogout }) => {
         <div className="flex justify-between items-center h-12 sm:h-16">
           <div className="flex items-center space-x-2 sm:space-x-4">
             <h1 className="text-sm sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-white truncate">
-              Crypto Trading Dashboard
+              Crypto Dashboard
             </h1>
             <div className="flex space-x-1 sm:space-x-2 lg:space-x-4">
               <button
@@ -43,7 +43,19 @@ const Navigation = ({ currentPage, onPageChange, onLogout }) => {
                     : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
-                🤖 Telegram
+                <span className="hidden sm:inline">🤖 Telegram</span>
+                <span className="sm:hidden">Telegram</span>
+              </button>
+              <button
+                onClick={() => onPageChange('funding-rates')}
+                className={`px-1 py-0.5 sm:px-2 sm:py-1 lg:px-3 lg:py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                  currentPage === 'funding-rates'
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                <span className="hidden sm:inline">Funding Rates</span>
+                <span className="sm:hidden">Rates</span>
               </button>
             </div>
           </div>

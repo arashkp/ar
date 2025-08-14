@@ -17,5 +17,5 @@ numpy<2.0.0
 scipy
 pydantic~=2.11.7
 mexc-api
-aiohttp
+aiohttp>=3.8.0
 bitunix

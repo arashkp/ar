@@ -38,7 +38,7 @@ EXCHANGE_SPECIFIC_CONFIG = {
         'timeout': 60000,  # Kraken can be slower
     },
     'mexc': {
-        'timeout': 30000,  # 30 seconds timeout for MEXC
+        'timeout': 60000,  # 60 seconds timeout for MEXC (increased due to reliability issues)
         'options': {
             'defaultType': 'spot',
         }

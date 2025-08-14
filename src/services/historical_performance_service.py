@@ -159,7 +159,7 @@ class HistoricalPerformanceService:
         
         Args:
             symbol: Trading symbol (e.g., 'BTC/USDT')
-            exchange_id: Exchange ID (e.g., 'binance', 'mexc')
+            exchange_id: Exchange ID (e.g., 'binance', 'bitunix')
             timeframes: List of timeframes to calculate
             
         Returns:

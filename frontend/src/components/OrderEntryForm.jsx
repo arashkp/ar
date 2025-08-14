@@ -6,7 +6,7 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
   const safePredefinedVolume = predefinedVolumeUSDT !== undefined && predefinedVolumeUSDT !== null ? predefinedVolumeUSDT : '100';
   
   // Filter exchanges based on availability
-  const availableExchanges = bitgetAvailable ? ['MEXC', 'Bitget', 'Bitunix'] : ['MEXC', 'Bitunix'];
+  const availableExchanges = bitgetAvailable ? ['Bitget', 'Bitunix'] : ['Bitunix'];
   
   // State for form inputs
   const [symbol, setSymbol] = useState('');
@@ -72,6 +72,7 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
   const getSymbolPrecision = (symbol) => {
     if (!symbol) return 2;
     if (symbol.includes('DOGE') || symbol.includes('POPCAT')) return 4;
+    if (symbol.includes('PEPE')) return 6;  // PEPE needs high precision (6 decimal places)
     if (symbol.includes('BTC')) return 0;
     if (symbol.includes('ETH')) return 1;
     return 2;
@@ -80,6 +81,7 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
   // Helper to get amount precision (BTC: 8, others: same as price precision)
   const getAmountPrecision = (symbol) => {
     if (symbol.includes('DOGE') || symbol.includes('POPCAT')) return 1;
+    if (symbol.includes('PEPE')) return 1;  // PEPE amount precision (1 decimal place)
     if (symbol.includes('BTC')) return 6;
     if (symbol.includes('ETH')) return 4;
     return 3;
@@ -128,11 +130,8 @@ const OrderEntryForm = ({ selectedSymbol, clickedPrice, side, setSide, predefine
     setMessage('');
     setIsLoading(true);
 
-    if (selectedExchange !== 'MEXC') {
-      setMessage(`Error: Exchange ${selectedExchange} is not yet implemented.`);
-      setIsLoading(false);
-      return;
-    }
+    // All exchanges are now supported
+    // No need to check for specific exchange types
 
     const orderDetails = {
       exchange_id: selectedExchange.toLowerCase(),

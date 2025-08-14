@@ -10,6 +10,7 @@ import {
 const getSymbolPrecision = (symbol) => {
   if (!symbol) return 2;
   if (symbol.includes('DOGE') || symbol.includes('POPCAT')) return 4;
+  if (symbol.includes('PEPE')) return 6;  // PEPE needs high precision (6 decimal places)
   if (symbol.includes('BTC')) return 0;
   if (symbol.includes('ETH')) return 1;
   return 2;
