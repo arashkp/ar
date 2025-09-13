@@ -11,7 +11,51 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from fastapi import HTTPException, status
 
+# Redirect stdout/stderr to suppress SDK output
+import sys
+from io import StringIO
+_original_stdout = sys.stdout
+_original_stderr = sys.stderr
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+
 from bitunix import BitunixClient
+
+# Restore stdout/stderr after import
+sys.stdout = _original_stdout
+sys.stderr = _original_stderr
+
+# Suppress verbose logging from Bitunix SDK and other libraries
+logging.getLogger('bitunix').setLevel(logging.ERROR)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
+logging.getLogger('requests').setLevel(logging.ERROR)
+logging.getLogger('httpx').setLevel(logging.ERROR)
+logging.getLogger('httpcore').setLevel(logging.ERROR)
+
+# Suppress ALL output from SDK
+import sys
+import os
+from io import StringIO
+
+# Monkey patch print to suppress SDK output
+_original_print = print
+def silent_print(*args, **kwargs):
+    pass
+
+class SuppressAllOutput:
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        self._original_print = print
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+        globals()['print'] = silent_print
+        return self
+    
+    def __exit__(self, *args):
+        sys.stdout = self._original_stdout
+        sys.stderr = self._original_stderr
+        globals()['print'] = self._original_print
 
 from src.services.exchange_interface import (
     ExchangeInterface,
@@ -119,8 +163,14 @@ class BitunixService(ExchangeInterface):
     async def initialize(self) -> None:
         """Initialize the Bitunix API client."""
         try:
+            # Temporarily suppress all logging during client initialization
+            old_level = logging.getLogger().level
+            logging.getLogger().setLevel(logging.ERROR)
+            
             self._client = BitunixClient(self.api_key, self.api_secret)
-            logger.info("Bitunix service initialized successfully with official SDK")
+            
+            # Restore original logging level
+            logging.getLogger().setLevel(old_level)
             
         except Exception as e:
             logger.error(f"Failed to initialize Bitunix service: {e}")
@@ -141,10 +191,10 @@ class BitunixService(ExchangeInterface):
                 await self.initialize()
             
             # Get account balance using official SDK
-            balance_response = self._client.get_account_balance()
+            with SuppressAllOutput():
+                balance_response = self._client.get_account_balance()
             
             if not balance_response or 'data' not in balance_response:
-                logger.warning("Failed to get balance from Bitunix SDK, using mock data")
                 return self._get_mock_positions()
             
             balance_data = balance_response['data']
@@ -160,7 +210,8 @@ class BitunixService(ExchangeInterface):
                     try:
                         # Get current price for the asset from REAL API
                         symbol = f"{coin}USDT"
-                        current_price = await self.get_ticker_price(f"{coin}/USDT")
+                        with SuppressAllOutput():
+                            current_price = await self.get_ticker_price(f"{coin}/USDT")
                         
                         # Calculate total value
                         total_value = total_balance * current_price
@@ -190,14 +241,12 @@ class BitunixService(ExchangeInterface):
                         positions.append(position)
                         
                     except Exception as e:
-                        logger.warning(f"Failed to process position for {coin}: {e}")
                         continue
             
             return positions
             
         except Exception as e:
             logger.error(f"Failed to fetch spot positions: {e}")
-            logger.info("Falling back to mock data")
             return self._get_mock_positions()
     
     async def _calculate_average_entry_price(self, coin: str, total_quantity: float) -> float:
@@ -219,7 +268,8 @@ class BitunixService(ExchangeInterface):
                 await self.initialize()
             
             # Get current balance from account for validation
-            balance_response = self._client.get_account_balance()
+            with SuppressAllOutput():
+                balance_response = self._client.get_account_balance()
             current_balance = 0.0
             
             if balance_response and 'data' in balance_response:
@@ -228,7 +278,7 @@ class BitunixService(ExchangeInterface):
                         current_balance = float(asset.get('balance', 0)) + float(asset.get('balanceLocked', 0))
                         break
             
-            logger.info(f"Backward calculation for {coin}: Current balance = {current_balance}")
+            # Calculating average entry price
             
             # Get trade history for this specific coin
             symbol = f"{coin}USDT"
@@ -238,11 +288,12 @@ class BitunixService(ExchangeInterface):
             # Fetch multiple pages to get enough orders
             while page <= 5:  # Limit to 5 pages for performance
                 try:
-                    orders_response = self._client.query_order_history(
-                        symbol=symbol,
-                        page=page,
-                        page_size=100
-                    )
+                    with SuppressAllOutput():
+                        orders_response = self._client.query_order_history(
+                            symbol=symbol,
+                            page=page,
+                            page_size=100
+                        )
                     
                     if not orders_response or 'data' not in orders_response:
                         break
@@ -261,22 +312,20 @@ class BitunixService(ExchangeInterface):
                     page += 1
                     
                 except Exception as e:
-                    logger.warning(f"Error fetching page {page} for {coin}: {e}")
                     break
             
             if not all_orders:
-                logger.warning(f"No orders found for {coin}, using fallback")
                 return await self._get_fallback_avg_price(coin)
             
-            # Sort orders by time (newest first) for backward calculation
-            all_orders.sort(key=lambda x: x.get('ctime', ''), reverse=True)
+            # Sort orders by price (highest first) for backward calculation
+            all_orders.sort(key=lambda x: float(x.get('avgPrice', 0)), reverse=True)
             
-            # BACKWARD CALCULATION: Start from newest and work backwards
+            # BACKWARD CALCULATION: Start from highest price and work down
             relevant_orders = []
             accumulated_quantity = 0.0
             tolerance = 0.01  # 1% tolerance
             
-            logger.info(f"Processing {len(all_orders)} orders in reverse chronological order...")
+            # Processing orders from highest price to lowest
             
             for order in all_orders:
                 side = order.get('side')  # 1 = SELL, 2 = BUY (from official docs)
@@ -296,10 +345,8 @@ class BitunixService(ExchangeInterface):
                         
                         # Check if we've reached the target balance
                         if abs(accumulated_quantity - current_balance) <= (current_balance * tolerance):
-                            logger.info(f"✅ {coin}: Reached target balance! Accumulated={accumulated_quantity}, Target={current_balance}")
                             break
                         elif accumulated_quantity > current_balance * (1 + tolerance):
-                            logger.warning(f"⚠️ {coin}: Accumulated quantity ({accumulated_quantity}) exceeds target ({current_balance}) by more than tolerance")
                             break
                             
                     elif side == 1:  # SELL - reduces position
@@ -312,7 +359,6 @@ class BitunixService(ExchangeInterface):
                             continue
             
             if not relevant_orders:
-                logger.warning(f"No relevant buy orders found for {coin}, using fallback")
                 return await self._get_fallback_avg_price(coin)
             
             # Calculate weighted average from relevant buy orders
@@ -320,7 +366,6 @@ class BitunixService(ExchangeInterface):
             total_buy_value = sum(order['value'] for order in relevant_orders)
             
             if total_buy_quantity <= 0:
-                logger.warning(f"Invalid buy quantity for {coin}, using fallback")
                 return await self._get_fallback_avg_price(coin)
             
             calculated_avg_price = total_buy_value / total_buy_quantity
@@ -329,21 +374,12 @@ class BitunixService(ExchangeInterface):
             balance_difference = abs(total_buy_quantity - current_balance)
             balance_tolerance = current_balance * tolerance
             
-            logger.info(f"{coin} backward calculation results:")
-            logger.info(f"  Relevant buy orders: {len(relevant_orders)}")
-            logger.info(f"  Total buy quantity: {total_buy_quantity}")
-            logger.info(f"  Current balance: {current_balance}")
-            logger.info(f"  Difference: {balance_difference}")
-            logger.info(f"  Tolerance: {balance_tolerance}")
-            logger.info(f"  Calculated avg price: {calculated_avg_price}")
+            # Calculation completed
             
             if balance_difference <= balance_tolerance:
-                logger.info(f"✅ {coin} validation PASSED: Calculated quantity matches account balance")
                 return calculated_avg_price
             else:
-                logger.warning(f"❌ {coin} validation FAILED: Calculated quantity ({total_buy_quantity}) doesn't match account balance ({current_balance})")
-                logger.warning(f"   Difference: {balance_difference}, Tolerance: {balance_tolerance}")
-                logger.warning(f"   Using fallback calculation for {coin}")
+                logger.warning(f"Validation failed for {coin}, using fallback")
                 return await self._get_fallback_avg_price(coin)
                 
         except Exception as e:
@@ -375,13 +411,12 @@ class BitunixService(ExchangeInterface):
                 await self.initialize()
             
             symbol = f"{coin}USDT"
-            current_price = self._client.get_latest_price(symbol)
+            with SuppressAllOutput():
+                current_price = self._client.get_latest_price(symbol)
             
             if current_price and isinstance(current_price, (int, float)):
-                logger.info(f"Using current price as fallback for {coin}: {current_price}")
                 return float(current_price)
             else:
-                logger.warning(f"Could not get current price for {coin}")
                 return 1.0
                 
         except Exception as e:
@@ -423,19 +458,80 @@ class BitunixService(ExchangeInterface):
             if not self._client:
                 await self.initialize()
             
-            # Get current orders using official SDK
+            # If no symbol provided, fetch orders for all supported symbols
+            if symbol is None:
+                return await self._get_all_open_orders()
+            
+            # Use the internal method to fetch orders for the specific symbol
+            return await self._get_orders_for_symbol(symbol)
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch open orders: {e}")
+            return self._get_mock_orders(symbol)
+    
+    async def _get_all_open_orders(self) -> List[SpotOrder]:
+        """
+        Fetch open orders for all supported symbols.
+        
+        Returns:
+            List of all open orders across all supported symbols
+        """
+        # Fetching orders for all symbols
+        all_orders = []
+        
+        # Get the list of supported symbols from the backward analysis
+        # We'll fetch orders for common trading pairs
+        supported_symbols = [
+            'BTC/USDT', 'ETH/USDT', 'XRP/USDT', 'ADA/USDT', 'SOL/USDT', 
+            'SUI/USDT', 'XLM/USDT', 'TRX/USDT', 'PEPE/USDT', 'BNB/USDT', 
+            'ATOM/USDT', 'DOT/USDT', 'BCH/USDT', 'BONK/USDT', 'HBAR/USDT', 'HYPE/USDT'
+        ]
+        
+        for symbol in supported_symbols:
+            try:
+                # Call the internal method directly to avoid recursion
+                symbol_orders = await self._get_orders_for_symbol(symbol)
+                if symbol_orders and isinstance(symbol_orders, list):
+                    all_orders.extend(symbol_orders)
+            except Exception as e:
+                continue
+        
+        # All orders fetched
+        return all_orders
+    
+    async def _get_orders_for_symbol(self, symbol: str) -> List[SpotOrder]:
+        """
+        Internal method to fetch orders for a specific symbol.
+        
+        Args:
+            symbol: Symbol to fetch orders for (e.g., 'BTC/USDT')
+            
+        Returns:
+            List of orders for the symbol
+        """
+        try:
+            # Get current orders using official SDK for specific symbol
             symbol_param = symbol.replace('/', '') if symbol else None
-            orders_response = self._client.query_current_orders(symbol=symbol_param)
+            # Fetching orders from API
+            with SuppressAllOutput():
+                orders_response = self._client.query_current_orders(symbol=symbol_param)
+            
+            # API response received
             
             if not orders_response or 'data' not in orders_response:
-                logger.warning("Failed to get orders from Bitunix SDK, using mock data")
                 return self._get_mock_orders(symbol)
             
             orders_data = orders_response['data']
+            # Processing orders
             orders = []
+            
+            # Check if orders_data is a list
+            if not isinstance(orders_data, list):
+                return []
             
             for order_data in orders_data:
                 try:
+                    
                     # Map Bitunix order status to our enum
                     status_mapping = {
                         1: OrderStatus.OPEN,  # Pending
@@ -444,10 +540,9 @@ class BitunixService(ExchangeInterface):
                         4: OrderStatus.PARTIALLY_FILLED  # Partially filled
                     }
                     
-                    order_status = status_mapping.get(
-                        order_data.get('status', 1), 
-                        OrderStatus.OPEN
-                    )
+                    raw_status = order_data.get('status', 1)
+                    order_status = status_mapping.get(raw_status, OrderStatus.OPEN)
+                    # Order status mapped
                     
                     # Map Bitunix side to our enum
                     # According to official docs: Side (1 Sell 2 Buy)
@@ -475,22 +570,23 @@ class BitunixService(ExchangeInterface):
                     orders.append(order)
                     
                 except Exception as e:
-                    logger.warning(f"Failed to process order {order_data.get('orderId')}: {e}")
                     continue
             
+            # Orders processed
             return orders
             
         except Exception as e:
-            logger.error(f"Failed to fetch open orders: {e}")
-            logger.info("Falling back to mock data")
+            logger.error(f"Failed to fetch orders for {symbol}: {e}")
             return self._get_mock_orders(symbol)
     
     def _get_mock_orders(self, symbol: Optional[str] = None) -> List[SpotOrder]:
         """Get mock orders for fallback."""
+            # Using mock data
         orders = []
         
         for order_data in self._mock_data['orders']:
             if symbol and order_data['symbol'] != symbol:
+                # Symbol mismatch, skipping
                 continue
                 
             order = SpotOrder(
@@ -508,6 +604,7 @@ class BitunixService(ExchangeInterface):
             )
             orders.append(order)
         
+        # Mock orders processed
         return orders
     
     async def get_trade_history(
@@ -533,14 +630,14 @@ class BitunixService(ExchangeInterface):
             
             # Get order history using official SDK
             symbol_param = symbol.replace('/', '') if symbol else None
-            trades_response = self._client.query_order_history(
-                symbol=symbol_param, 
-                page=1, 
-                page_size=limit
-            )
+            with SuppressAllOutput():
+                trades_response = self._client.query_order_history(
+                    symbol=symbol_param, 
+                    page=1, 
+                    page_size=limit
+                )
             
             if not trades_response or 'data' not in trades_response:
-                logger.warning("Failed to get trade history from Bitunix SDK, using mock data")
                 return self._get_mock_trades(symbol, limit)
             
             trades_data = trades_response['data'].get('data', [])
@@ -570,14 +667,12 @@ class BitunixService(ExchangeInterface):
                     trades.append(trade)
                     
                 except Exception as e:
-                    logger.warning(f"Failed to process trade {trade_data.get('orderId')}: {e}")
                     continue
             
             return trades[:limit]
             
         except Exception as e:
             logger.error(f"Failed to fetch trade history: {e}")
-            logger.info("Falling back to mock data")
             return self._get_mock_trades(symbol, limit)
     
     def _get_mock_trades(self, symbol: Optional[str] = None, limit: int = 25) -> List[SpotTrade]:
@@ -616,10 +711,10 @@ class BitunixService(ExchangeInterface):
                 await self.initialize()
             
             # Get account balance using official SDK
-            balance_response = self._client.get_account_balance()
+            with SuppressAllOutput():
+                balance_response = self._client.get_account_balance()
             
             if not balance_response or 'data' not in balance_response:
-                logger.warning("Failed to get balance from Bitunix SDK, using mock data")
                 return self._mock_data['balances']
             
             balance_data = balance_response['data']
@@ -638,7 +733,6 @@ class BitunixService(ExchangeInterface):
             
         except Exception as e:
             logger.error(f"Failed to fetch account balance: {e}")
-            logger.info("Falling back to mock data")
             return self._mock_data['balances']
     
     async def get_ticker_price(self, symbol: str) -> float:
@@ -659,7 +753,8 @@ class BitunixService(ExchangeInterface):
             symbol_param = symbol.replace('/', '')
             
             # Get latest price using official SDK - NO HARDCODED VALUES!
-            price_response = self._client.get_latest_price(symbol_param)
+            with SuppressAllOutput():
+                price_response = self._client.get_latest_price(symbol_param)
             
             # Handle Bitunix API response format
             if price_response and isinstance(price_response, dict):

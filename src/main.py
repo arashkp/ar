@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.routers import exchange, trades, market_overview, orders, investment, \
-    historical_performance, spot_trades, bitget_trades, telegram, funding_rates  # Added funding_rates router
+    historical_performance, spot_trades, telegram, funding_rates  # Added funding_rates router
 from src.database.session import create_db_and_tables  # For DB initialization
 from src.utils.auth import require_api_key
 
@@ -50,7 +50,6 @@ app.include_router(orders.router, dependencies=[require_api_key()])  # Added ord
 app.include_router(investment.router, dependencies=[require_api_key()])  # Added investment router, prefix is in investment.py
 app.include_router(historical_performance.router, dependencies=[require_api_key()])  # Added historical_performance router
 app.include_router(spot_trades.router, dependencies=[require_api_key()])  # Added spot_trades router
-app.include_router(bitget_trades.router, dependencies=[require_api_key()])
 app.include_router(telegram.router, dependencies=[require_api_key()])  # Added telegram router
 app.include_router(funding_rates.router, dependencies=[require_api_key()])  # Added funding_rates router
 

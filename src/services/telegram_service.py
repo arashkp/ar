@@ -73,33 +73,81 @@ class TelegramNotificationService:
             return False
     
     async def fetch_asset_overview_data(self) -> Dict:
-        """Fetch real asset overview data from the API."""
+        """Fetch real asset overview data from the API using the same logic as Asset Overview page."""
         try:
             # Get API key from environment
-            api_key = os.getenv("API_KEY", "vZgz1jBWa_FmmEazZp722avXKjNIkjUufKXadoKACrk")
+            api_key = os.getenv("API_KEY")
             headers = {"X-API-Key": api_key}
             
-            # Use deployed URL instead of localhost
-            base_url = os.getenv("API_BASE_URL", "https://ar-trading.onrender.com")
+            # Use local URL for testing
+            base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
             
             async with aiohttp.ClientSession() as session:
-                # Fetch Bitunix data
+                # Fetch Bitunix data using the same endpoint as Asset Overview
                 bitunix_url = f"{base_url}/api/v1/spot-trades/backward-analysis"
                 async with session.get(bitunix_url, headers=headers) as response:
                     bitunix_data = await response.json() if response.status == 200 else None
                 
-                # Fetch Bitget data
-                bitget_url = f"{base_url}/api/v1/bitget/backward-analysis?symbol=HYPE/USDT"
-                async with session.get(bitget_url, headers=headers) as response:
-                    bitget_data = await response.json() if response.status == 200 else None
+                # Convert backward-analysis response to asset format for compatibility
+                bitunix_assets = []
+                if bitunix_data and "assets" in bitunix_data:
+                    for asset in bitunix_data["assets"]:
+                        # Convert to the format expected by the report generation
+                        formatted_asset = {
+                            "symbol": asset.get("symbol", ""),
+                            "current_balance": asset.get("current_balance", 0),
+                            "current_price": asset.get("current_price", 0),
+                            "average_entry_price": asset.get("average_entry_price", 0),
+                            "unrealized_pnl_percentage": asset.get("unrealized_pnl_percentage", 0),
+                            "total_buy_value": asset.get("current_balance", 0) * asset.get("average_entry_price", 0)
+                        }
+                        bitunix_assets.append(formatted_asset)
                 
                 return {
-                    "bitunix": bitunix_data,
-                    "bitget": bitget_data
+                    "bitunix": {"assets": bitunix_assets}
                 }
         except Exception as e:
             logger.error(f"Error fetching asset overview data: {e}")
-            return {"bitunix": None, "bitget": None}
+            return {"bitunix": None}
+    
+    async def fetch_orders_info(self, symbol: str) -> tuple:
+        """Fetch current orders count and recent order history for a specific symbol."""
+        try:
+            # Get API key from environment
+            api_key = os.getenv("API_KEY")
+            headers = {"X-API-Key": api_key}
+            
+            # Use local URL for testing
+            base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+            
+            async with aiohttp.ClientSession() as session:
+                # Fetch all orders and filter by base symbol (same logic as Asset Overview)
+                orders_url = f"{base_url}/api/v1/spot-trades/orders"
+                async with session.get(orders_url, headers=headers) as response:
+                    if response.status == 200:
+                        orders_data = await response.json()
+                        if isinstance(orders_data, list):
+                            # Filter orders by base symbol (same logic as Asset Overview)
+                            symbol_orders = []
+                            for order in orders_data:
+                                order_symbol = order.get('symbol', '')
+                                # Extract base symbol from order symbol (e.g., "SUI/USDT" -> "SUI")
+                                base_symbol = order_symbol.split('/')[0] if '/' in order_symbol else order_symbol
+                                if base_symbol == symbol:
+                                    symbol_orders.append(order)
+                            
+                            # Count current orders (status 1 or 'open' = pending)
+                            current_orders = [o for o in symbol_orders if o.get('status') == 1 or o.get('status') == 'open']
+                            current_count = len(current_orders)
+                            
+                            return current_count, ""
+                        else:
+                            return 0, ""
+                    else:
+                        return 0, ""
+        except Exception as e:
+            logger.error(f"Error fetching orders info for {symbol}: {e}")
+            return 0, ""
     
     async def generate_market_report(self) -> str:
         """Generate a comprehensive market report using real data."""
@@ -108,8 +156,7 @@ class TelegramNotificationService:
             asset_data = await self.fetch_asset_overview_data()
             
             # Format the report
-            report = f"📊 <b>AR Trading Portfolio Report</b>\n"
-            report += f"🕐 {datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+            report = f"📊 <b>AR Trading Portfolio Report</b>\n\n"
             
             # Initialize overall portfolio variables
             total_invested = 0
@@ -119,13 +166,8 @@ class TelegramNotificationService:
             if asset_data["bitunix"] and "assets" in asset_data["bitunix"]:
                 bitunix_assets = asset_data["bitunix"]["assets"]
                 
-                # Filter out USDT if value is below $10
-                filtered_bitunix_assets = []
-                for asset in bitunix_assets:
-                    current_value = float(asset.get("current_balance", 0)) * float(asset.get("current_price", 0))
-                    if asset.get("symbol") == "USDT" and current_value < 10:
-                        continue
-                    filtered_bitunix_assets.append(asset)
+                # Use all assets from backward-analysis (same as Asset Overview)
+                filtered_bitunix_assets = bitunix_assets
                 
                 # Calculate Bitunix portfolio summary
                 bitunix_total_cost = sum(float(asset.get("total_buy_value", 0)) for asset in filtered_bitunix_assets)
@@ -136,11 +178,6 @@ class TelegramNotificationService:
                 total_invested += bitunix_total_cost
                 total_current_value += bitunix_current_value
                 
-                report += f"🔵 <b>Bitunix Portfolio</b>\n"
-                report += f"• Total Cost: ${bitunix_total_cost:,.2f}\n"
-                report += f"• Current Value: ${bitunix_current_value:,.2f}\n"
-                report += f"• P&L: ${bitunix_pnl:,.2f} ({bitunix_pnl_percentage:+.2f}%)\n\n"
-                
                 # Sort assets by current value
                 sorted_bitunix_assets = sorted(filtered_bitunix_assets, key=lambda x: float(x.get("current_balance", 0)) * float(x.get("current_price", 0)), reverse=True)
                 
@@ -149,7 +186,16 @@ class TelegramNotificationService:
                     symbol = asset.get("symbol", "Unknown")
                     current_value = float(asset.get("current_balance", 0)) * float(asset.get("current_price", 0))
                     pnl_percentage = float(asset.get("unrealized_pnl_percentage", 0))
-                    report += f"{i}. {symbol}: ${current_value:,.2f} ({pnl_percentage:+.2f}%)\n"
+                    
+                    # Remove /USDT from symbols to match the desired format
+                    display_symbol = symbol.replace("/USDT", "") if symbol != "USDT" else "USDT"
+                    
+                    # Skip USDT for orders info
+                    if symbol != "USDT":
+                        orders_count, _ = await self.fetch_orders_info(display_symbol)
+                        report += f"{i}. {display_symbol}: ${current_value:,.2f} ({pnl_percentage:+.2f}%) | {orders_count} CO\n"
+                    else:
+                        report += f"{i}. {display_symbol}: ${current_value:,.2f} ({pnl_percentage:+.2f}%)\n"
                 
                 report += "\n"
                 
@@ -180,36 +226,15 @@ class TelegramNotificationService:
                     balance = float(asset.get("current_balance", 0))
                     avg_entry = float(asset.get("average_entry_price", 0))
                     current_price = float(asset.get("current_price", 0))
-                    report += f"• {symbol}: {balance:,.2f} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
+                    
+                    # Remove /USDT from symbols to match the desired format
+                    display_symbol = symbol.replace("/USDT", "") if symbol != "USDT" else "USDT"
+                    
+                    report += f"• {display_symbol}: {balance:,.2f} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
             else:
                 report += f"📈 <b>Bitunix Portfolio</b>\n"
                 report += f"No data available.\n\n"
             
-            # Process Bitget data if available
-            if asset_data["bitget"] and asset_data["bitget"].get("symbol"):
-                # Bitget returns a single asset object, not an array
-                bitget_asset = asset_data["bitget"]
-                
-                # Calculate Bitget portfolio summary
-                bitget_total_cost = float(bitget_asset.get("total_buy_cost", 0))
-                bitget_current_value = float(bitget_asset.get("current_value", 0))
-                bitget_pnl = bitget_current_value - bitget_total_cost
-                bitget_pnl_percentage = (bitget_pnl / bitget_total_cost * 100) if bitget_total_cost > 0 else 0
-                
-                total_invested += bitget_total_cost
-                total_current_value += bitget_current_value
-                
-                report += f"\n🔴 <b>Bitget Portfolio</b>\n"
-                report += f"• Total Cost: ${bitget_total_cost:,.2f}\n"
-                report += f"• Current Value: ${bitget_current_value:,.2f}\n"
-                report += f"• P&L: ${bitget_pnl:,.2f} ({bitget_pnl_percentage:+.2f}%)\n\n"
-                
-                # Add Bitget asset to the asset details
-                symbol = bitget_asset.get("symbol", "Unknown")
-                balance = float(bitget_asset.get("current_balance", 0))
-                avg_entry = float(bitget_asset.get("average_entry_price", 0))
-                current_price = float(bitget_asset.get("current_price", 0))
-                report += f"• {symbol}: {balance:,.2f} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
             
             # Overall portfolio summary
             if total_invested > 0:
@@ -272,6 +297,24 @@ class TelegramNotificationService:
         test_message += f"✅ Bot is working correctly!"
         
         return await self.send_message(test_message)
+    
+    async def send_test_report_with_orders(self) -> bool:
+        """Send a test report to verify the orders count functionality."""
+        try:
+            # Test orders count for a specific symbol
+            test_symbol = "SUI/USDT"
+            orders_count = await self.fetch_current_orders_count(test_symbol)
+            
+            test_message = f"🧪 <b>Orders Count Test</b>\n"
+            test_message += f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            test_message += f"📊 Testing orders count for {test_symbol}\n"
+            test_message += f"📋 Current Orders: {orders_count}\n"
+            test_message += f"✅ Orders count functionality working!"
+            
+            return await self.send_message(test_message)
+        except Exception as e:
+            logger.error(f"Error in test report: {e}")
+            return False
 
 # Global instance
 telegram_service = TelegramNotificationService() 

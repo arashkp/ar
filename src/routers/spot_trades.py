@@ -232,7 +232,7 @@ async def get_backward_analysis(bitunix_service: BitunixService = Depends(get_bi
                 if balance > 0:  # Include all assets with balance > 0, including USDT
                     balances[coin] = balance
         
-        assets = ['HBAR', 'SUI', 'BONK', 'ONDO', 'USDT']
+        assets = ['HBAR', 'SUI', 'BONK', 'ONDO', 'HYPE', 'USDT']
         analysis_assets = []
         
         for coin in assets:
@@ -342,13 +342,9 @@ async def get_backward_analysis(bitunix_service: BitunixService = Depends(get_bi
                     if total_buy_quantity > 0:
                         calculated_avg_price = total_buy_value / total_buy_quantity
                         
-                        # Get current price
+                        # Get current price using the proper method
                         try:
-                            price_response = bitunix_service._client.get_latest_price(symbol)
-                            if price_response and isinstance(price_response, dict) and price_response.get('success') and price_response.get('data'):
-                                current_price = float(price_response['data'])
-                            else:
-                                current_price = calculated_avg_price  # Fallback
+                            current_price = await bitunix_service.get_ticker_price(f"{coin}/USDT")
                         except:
                             current_price = calculated_avg_price  # Fallback
                         
@@ -384,6 +380,12 @@ async def get_backward_analysis(bitunix_service: BitunixService = Depends(get_bi
                         )
                         
                         analysis_assets.append(analysis_asset)
+                        logger.info(f"Processed {coin}: {len(relevant_orders)} orders, avg price: {calculated_avg_price:.4f}")
+        
+        # Log summary
+        total_assets = len(analysis_assets)
+        total_orders = sum(asset.number_of_orders for asset in analysis_assets)
+        logger.info(f"Backward analysis: {total_assets} assets analyzed, {total_orders} total orders processed")
         
         return BackwardAnalysisResponse(
             success=True,
@@ -478,6 +480,9 @@ async def get_open_orders(
         
         orders = await service.get_open_orders(symbol=symbol)
         
+        # Sort orders by price (highest first)
+        orders.sort(key=lambda x: x.price or 0, reverse=True)
+        
         # Convert to response models
         response_orders = []
         for order in orders:
@@ -496,6 +501,7 @@ async def get_open_orders(
                 client_order_id=order.client_order_id
             ))
         
+        logger.info(f"Fetched {len(response_orders)} open orders")
         return response_orders
         
     except HTTPException:

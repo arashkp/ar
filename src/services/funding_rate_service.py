@@ -17,7 +17,7 @@ from src.schemas.funding_rate_schema import FundingRateItem, FundingRateResponse
 logger = logging.getLogger(__name__)
 
 # Supported exchanges for funding rates with their API endpoints
-SUPPORTED_EXCHANGES = ['bitunix', 'kucoin', 'coinex']  # 'mexc' commented out due to reliability issues
+SUPPORTED_EXCHANGES = ['bitunix', 'kucoin', 'coinex']  # WEEX temporarily disabled due to 521 errors  # 'mexc' commented out due to reliability issues
 
 # Exchange API configurations
 EXCHANGE_APIS = {
@@ -45,6 +45,12 @@ EXCHANGE_APIS = {
         'funding_rate_endpoint': '/futures/funding-rate',
         'rate_limit': 5,  # requests per second
         'requires_auth': False
+    },
+    'weex': {
+        'base_url': 'https://api-contract.weex.com',
+        'funding_rate_endpoint': '/capi/v2/market/currentFundRate',
+        'rate_limit': 10,  # 20 requests per 2 seconds = 10 per second
+        'requires_auth': False
     }
 }
 
@@ -52,6 +58,7 @@ EXCHANGE_APIS = {
 SUPPORTED_SYMBOLS = ['BTC', 'ETH', 'XRP', 'ADA', 'SOL', 'SUI', 'XLM', 'TRX', 'PEPE', 'BNB', 'ATOM', 'DOT', 'BCH']
 
 # Exchange-specific symbol mappings for each exchange
+# This allows for flexible symbol naming across different exchanges
 EXCHANGE_SYMBOL_MAPPING = {
     'bitunix': {
         'BTC': 'BTCUSDT',
@@ -112,8 +119,58 @@ EXCHANGE_SYMBOL_MAPPING = {
         'ATOM': 'ATOMUSDT',
         'DOT': 'DOTUSDT',
         'BCH': 'BCHUSDT'
+    },
+    'weex': {
+        'BTC': 'cmt_btcusdt',
+        'ETH': 'cmt_ethusdt', 
+        'XRP': 'cmt_xrpusdt',
+        'ADA': 'cmt_adausdt',
+        'SOL': 'cmt_solusdt',
+        'SUI': 'cmt_suiusdt',
+        'XLM': 'cmt_xlmusdt',
+        'PEPE': 'cmt_pepeusdt',
+        'TRX': 'cmt_trxusdt',
+        'BNB': 'cmt_bnbusdt',
+        'ATOM': 'cmt_atomusdt',
+        'DOT': 'cmt_dotusdt',
+        'BCH': 'cmt_bchusdt'
     }
 }
+
+def get_exchange_symbol(exchange_id: str, base_symbol: str) -> str:
+    """
+    Get the correct symbol format for a specific exchange.
+    
+    Args:
+        exchange_id: Exchange identifier (e.g., 'bitunix', 'weex')
+        base_symbol: Base symbol (e.g., 'BTC', 'PEPE')
+        
+    Returns:
+        Exchange-specific symbol format
+    """
+    if exchange_id in EXCHANGE_SYMBOL_MAPPING and base_symbol in EXCHANGE_SYMBOL_MAPPING[exchange_id]:
+        return EXCHANGE_SYMBOL_MAPPING[exchange_id][base_symbol]
+    else:
+        # Fallback to default format if not specified
+        return f"{base_symbol}USDT"
+
+def get_base_symbol_from_exchange_symbol(exchange_id: str, exchange_symbol: str) -> str:
+    """
+    Convert exchange-specific symbol back to base symbol.
+    
+    Args:
+        exchange_id: Exchange identifier
+        exchange_symbol: Exchange-specific symbol (e.g., '1000PEPEUSDT')
+        
+    Returns:
+        Base symbol (e.g., 'PEPE')
+    """
+    # Handle special cases for different exchanges
+    if exchange_id == 'bitunix' and exchange_symbol == '1000PEPEUSDT':
+        return 'PEPE'
+    
+    # Default: remove USDT suffix
+    return exchange_symbol.replace('USDT', '')
 
 class FundingRateService:
     """Service for fetching funding rates from multiple exchanges using direct APIs."""
@@ -216,77 +273,28 @@ class FundingRateService:
             return None
     
     async def _fetch_bitunix_funding_rates_batch(self) -> List[FundingRateItem]:
-        """Fetch all funding rates from Bitunix API in one batch call."""
+        """Fetch all funding rates from Bitunix API using individual calls (batch API doesn't work)."""
         try:
-            await self._rate_limit('bitunix')
-            session = await self._get_session()
+            funding_rates = []
             
-            url = f"{EXCHANGE_APIS['bitunix']['base_url']}{EXCHANGE_APIS['bitunix']['funding_rate_batch_endpoint']}"
-            logger.info(f"Fetching Bitunix batch funding rates from URL: {url}")
+            # Since batch API doesn't work, fetch individual rates for each supported symbol
+            for symbol in SUPPORTED_SYMBOLS:
+                try:
+                    # Get exchange-specific symbol
+                    exchange_symbol = get_exchange_symbol('bitunix', symbol)
+                    if exchange_symbol:
+                        rate = await self._fetch_bitunix_funding_rate(exchange_symbol)
+                        if rate:
+                            funding_rates.append(rate)
+                except Exception as e:
+                    logger.warning(f"Error fetching Bitunix rate for {symbol}: {e}")
+                    continue
             
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    
-                    if data.get('code') == 0 and 'data' in data:
-                        funding_rates = []
-                        funding_data_list = data['data']
-                        
-                        for funding_data in funding_data_list:
-                            symbol = funding_data.get('symbol', '')
-                            logger.debug(f"Found Bitunix symbol: {symbol}")
-                            
-                            # Only include symbols we support
-                            base_symbol = symbol.replace('USDT', '')
-                            if base_symbol in SUPPORTED_SYMBOLS:
-                                try:
-                                    # Parse funding rate (Bitunix returns percentage, not decimal)
-                                    funding_rate = float(funding_data.get('fundingRate', 0))
-                                    mark_price_raw = funding_data.get('markPrice')
-                                    last_price_raw = funding_data.get('lastPrice')
-                                    
-                                    # Handle price parsing with better precision handling
-                                    mark_price = None
-                                    last_price = None
-                                    
-                                    if mark_price_raw and mark_price_raw != '0' and mark_price_raw != 0:
-                                        try:
-                                            mark_price = float(mark_price_raw)
-                                        except (ValueError, TypeError) as e:
-                                            logger.warning(f"Could not parse mark price '{mark_price_raw}' for {symbol}: {e}")
-                                    
-                                    if last_price_raw and last_price_raw != '0' and last_price_raw != 0:
-                                        try:
-                                            last_price = float(last_price_raw)
-                                        except (ValueError, TypeError) as e:
-                                            logger.warning(f"Could not parse last price '{last_price_raw}' for {symbol}: {e}")
-                                    
-                                    funding_rates.append(FundingRateItem(
-                                        exchange='BITUNIX',
-                                        symbol=symbol,
-                                        funding_rate=funding_rate,
-                                        mark_price=mark_price,
-                                        last_price=last_price,
-                                        next_funding_time=None,  # Bitunix doesn't provide this
-                                        previous_funding_rate=None,  # Bitunix doesn't provide this
-                                        estimated_rate=None,  # Bitunix doesn't provide this
-                                        last_updated=datetime.utcnow()
-                                    ))
-                                except (ValueError, TypeError) as e:
-                                    logger.warning(f"Error parsing funding data for {symbol}: {e}")
-                                    continue
-                        
-                        logger.info(f"Fetched {len(funding_rates)} funding rates from Bitunix batch API")
-                        return funding_rates
-                    else:
-                        logger.warning(f"Bitunix batch API error: {data}")
-                        return []
-                else:
-                    logger.warning(f"Bitunix batch API HTTP error: {response.status}")
-                    return []
+            logger.info(f"Fetched {len(funding_rates)} funding rates from Bitunix (individual calls)")
+            return funding_rates
                     
         except Exception as e:
-            logger.error(f"Error fetching Bitunix batch funding rates: {e}")
+            logger.error(f"Error fetching Bitunix funding rates: {e}")
             return []
     
     async def _fetch_kucoin_funding_rate(self, symbol: str) -> Optional[FundingRateItem]:
@@ -487,6 +495,89 @@ class FundingRateService:
             logger.error(f"Error fetching Coinex funding rate for {symbol}: {e}")
             return None
     
+    async def _fetch_weex_funding_rate(self, symbol: str) -> Optional[FundingRateItem]:
+        """Fetch funding rate from WEEX website by scraping their funding rate page."""
+        try:
+            await self._rate_limit('weex')
+            session = await self._get_session()
+            
+            # Convert symbol to WEEX format (e.g., BTCUSDT -> BTC-USDT)
+            base_symbol = symbol.replace('USDT', '')
+            weex_symbol = f"{base_symbol}-USDT"
+            
+            # Scrape from WEEX funding rate page
+            url = f"https://www.weex.com/futures/introduction/funding-rate/{weex_symbol}"
+            
+            # Add timeout to prevent hanging
+            timeout = aiohttp.ClientTimeout(total=15)  # 15 second timeout for web scraping
+            async with session.get(url, timeout=timeout) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    
+                    # Parse the funding rate from the HTML
+                    import re
+                    
+                    # Try to find funding rate pattern in the HTML
+                    # Look for patterns specific to funding rates
+                    rate_patterns = [
+                        # Look for funding rate in JSON data
+                        r'"fundingRate"\s*:\s*"([+-]?\d+\.?\d*)"',
+                        r'"funding_rate"\s*:\s*"([+-]?\d+\.?\d*)"',
+                        r'fundingRate["\']?\s*:\s*["\']?([+-]?\d+\.?\d*)["\']?',
+                        r'funding_rate["\']?\s*:\s*["\']?([+-]?\d+\.?\d*)["\']?',
+                        # Look for percentage values that might be funding rates
+                        r'([+-]?\d+\.?\d*)\s*%\s*(?:funding|rate)',
+                        r'(?:funding|rate)\s*([+-]?\d+\.?\d*)\s*%',
+                        # Look for decimal values that might be funding rates
+                        r'([+-]?\d+\.?\d*)\s*(?:funding|rate)',
+                        r'(?:funding|rate)\s*([+-]?\d+\.?\d*)',
+                    ]
+                    
+                    funding_rate = None
+                    for i, pattern in enumerate(rate_patterns):
+                        matches = re.findall(pattern, html, re.IGNORECASE)
+                        if matches:
+                            logger.debug(f"Pattern {i} found {len(matches)} matches: {matches[:5]}")  # Log first 5 matches
+                            try:
+                                # Try to parse the first match
+                                rate_value = float(matches[0])
+                                logger.debug(f"Parsed rate value: {rate_value}")
+                                
+                                # If it's a very small number (like 0.0001), it might be a decimal rate
+                                if abs(rate_value) < 1 and abs(rate_value) > 0:
+                                    funding_rate = rate_value * 100  # Convert decimal to percentage
+                                    logger.debug(f"Converted decimal to percentage: {funding_rate}")
+                                else:
+                                    funding_rate = rate_value  # Already in percentage
+                                    logger.debug(f"Using as percentage: {funding_rate}")
+                                break
+                            except ValueError as e:
+                                logger.debug(f"Could not parse rate value '{matches[0]}': {e}")
+                                continue
+                    
+                    if funding_rate is not None:
+                        return FundingRateItem(
+                            exchange='WEEX',
+                            symbol=symbol,
+                            funding_rate=funding_rate,
+                            mark_price=None,  # Not available from web scraping
+                            last_price=None,  # Not available from web scraping
+                            next_funding_time=None,  # Not available from web scraping
+                            previous_funding_rate=None,  # Not available from web scraping
+                            estimated_rate=None,  # Not available from web scraping
+                            last_updated=datetime.utcnow()
+                        )
+                    else:
+                        logger.warning(f"Could not find funding rate in WEEX page for {symbol}")
+                        return None
+                else:
+                    logger.warning(f"WEEX website HTTP error for {symbol}: {response.status}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Error fetching WEEX funding rate for {symbol}: {e}")
+            return None
+    
     async def _fetch_exchange_funding_rate(
         self, 
         exchange_id: str, 
@@ -511,6 +602,8 @@ class FundingRateService:
             #     return await self._fetch_mexc_funding_rate(symbol)
             elif exchange_id == 'coinex':
                 return await self._fetch_coinex_funding_rate(symbol)
+            elif exchange_id == 'weex':
+                return await self._fetch_weex_funding_rate(symbol)
             else:
                 logger.warning(f"Exchange {exchange_id} not supported for funding rates")
                 return None
@@ -549,12 +642,7 @@ class FundingRateService:
         tasks = []
         for exchange_id in target_exchanges:
             # Use exchange-specific symbol format
-            if exchange_id in EXCHANGE_SYMBOL_MAPPING and symbol in EXCHANGE_SYMBOL_MAPPING[exchange_id]:
-                exchange_symbol = EXCHANGE_SYMBOL_MAPPING[exchange_id][symbol]
-            else:
-                # Fallback to default format if not specified
-                exchange_symbol = f"{symbol}USDT"
-            
+            exchange_symbol = get_exchange_symbol(exchange_id, symbol)
             tasks.append(self._fetch_exchange_funding_rate(exchange_id, exchange_symbol))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -605,10 +693,7 @@ class FundingRateService:
                 other_tasks = []
                 for symbol in target_symbols:
                     for exchange_id in other_exchanges:
-                        if exchange_id in EXCHANGE_SYMBOL_MAPPING and symbol in EXCHANGE_SYMBOL_MAPPING[exchange_id]:
-                            exchange_symbol = EXCHANGE_SYMBOL_MAPPING[exchange_id][symbol]
-                        else:
-                            exchange_symbol = f"{symbol}USDT"
+                        exchange_symbol = get_exchange_symbol(exchange_id, symbol)
                         other_tasks.append(self._fetch_exchange_funding_rate(exchange_id, exchange_symbol))
                 
                 other_results = await asyncio.gather(*other_tasks, return_exceptions=True)
@@ -624,23 +709,21 @@ class FundingRateService:
             
             for symbol in target_symbols:
                 for exchange_id in target_exchanges:
-                    if exchange_id in EXCHANGE_SYMBOL_MAPPING and symbol in EXCHANGE_SYMBOL_MAPPING[exchange_id]:
-                        exchange_symbol = EXCHANGE_SYMBOL_MAPPING[exchange_id][symbol]
-                    else:
-                        exchange_symbol = f"{symbol}USDT"
+                    exchange_symbol = get_exchange_symbol(exchange_id, symbol)
                     all_tasks.append(self._fetch_exchange_funding_rate(exchange_id, exchange_symbol))
             
             logger.info(f"Executing {len(all_tasks)} API calls in parallel")
             all_results = await asyncio.gather(*all_tasks, return_exceptions=True)
         
-        # Group results by symbol
+        # Group results by base symbol
         symbol_rates = {}
         for result in all_results:
             if isinstance(result, FundingRateItem):
-                symbol = result.symbol
-                if symbol not in symbol_rates:
-                    symbol_rates[symbol] = []
-                symbol_rates[symbol].append(result)
+                # Convert exchange symbol to base symbol for grouping
+                base_symbol = get_base_symbol_from_exchange_symbol(result.exchange.lower(), result.symbol)
+                if base_symbol not in symbol_rates:
+                    symbol_rates[base_symbol] = []
+                symbol_rates[base_symbol].append(result)
             elif isinstance(result, Exception):
                 logger.error(f"Exception in funding rate fetch: {result}")
         
@@ -649,10 +732,10 @@ class FundingRateService:
         for symbol in target_symbols:
             # Use standard USDT format for the response
             standard_symbol = f"{symbol}USDT"
-            if standard_symbol in symbol_rates:
+            if symbol in symbol_rates:
                 rates.append(FundingRateResponse(
                     symbol=standard_symbol,
-                    rates=symbol_rates[standard_symbol],
+                    rates=symbol_rates[symbol],
                     last_updated=datetime.utcnow()
                 ))
         
@@ -697,11 +780,7 @@ class FundingRateService:
         tasks = []
         for symbol in target_symbols:
             # Use exchange-specific symbol format
-            if exchange_id in EXCHANGE_SYMBOL_MAPPING and symbol in EXCHANGE_SYMBOL_MAPPING[exchange_id]:
-                exchange_symbol = EXCHANGE_SYMBOL_MAPPING[exchange_id][symbol]
-            else:
-                # Fallback to default format if not specified
-                exchange_symbol = f"{symbol}USDT"
+            exchange_symbol = get_exchange_symbol(exchange_id, symbol)
             tasks.append(self._fetch_exchange_funding_rate(exchange_id, exchange_symbol))
         
         results = await asyncio.gather(*tasks, return_exceptions=True)

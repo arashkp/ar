@@ -663,9 +663,6 @@ const AssetOverview = () => {
                                <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                  Filled
                                </th>
-                               <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                 Status
-                               </th>
                              </tr>
                            </thead>
                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -690,9 +687,6 @@ const AssetOverview = () => {
                                </td>
                                <td className="px-2 py-1 text-xs text-gray-900 dark:text-white font-mono">
                                  {formatQuantity(order.filled_quantity || 0)}
-                               </td>
-                               <td className={`px-2 py-1 text-xs font-mono ${getOrderStatusColor(order.status)}`}>
-                                 {formatOrderStatus(order.status)}
                                </td>
                              </tr>
                            ))}

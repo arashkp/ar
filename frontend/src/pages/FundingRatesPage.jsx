@@ -51,8 +51,14 @@ const FundingRatesPage = () => {
 
     // First pass: collect all exchanges and symbols
     fundingRates.rates.forEach(symbolData => {
-      // Extract base symbol (remove USDT suffix)
-      const baseSymbol = symbolData.symbol.replace('USDT', '');
+      // Extract base symbol (remove USDT suffix and handle special cases)
+      let baseSymbol = symbolData.symbol.replace('USDT', '');
+      
+      // Handle Bitunix special cases (e.g., 1000PEPEUSDT -> PEPE)
+      if (baseSymbol.startsWith('1000')) {
+        baseSymbol = baseSymbol.substring(4); // Remove '1000' prefix
+      }
+      
       symbols.add(baseSymbol);
       symbolData.rates.forEach(rate => {
         // Normalize exchange names to lowercase for consistency
@@ -73,8 +79,14 @@ const FundingRatesPage = () => {
 
     // Third pass: fill in the data
     fundingRates.rates.forEach(symbolData => {
-      // Extract base symbol (remove USDT suffix)
-      const baseSymbol = symbolData.symbol.replace('USDT', '');
+      // Extract base symbol (remove USDT suffix and handle special cases)
+      let baseSymbol = symbolData.symbol.replace('USDT', '');
+      
+      // Handle Bitunix special cases (e.g., 1000PEPEUSDT -> PEPE)
+      if (baseSymbol.startsWith('1000')) {
+        baseSymbol = baseSymbol.substring(4); // Remove '1000' prefix
+      }
+      
       symbolData.rates.forEach(rate => {
         // Normalize exchange name to lowercase
         const normalizedExchange = rate.exchange.toLowerCase();

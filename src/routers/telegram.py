@@ -86,6 +86,26 @@ async def control_scheduler(request: SchedulerRequest):
             detail=f"Error controlling scheduler: {str(e)}"
         )
 
+@router.post("/test-orders", dependencies=[require_api_key()])
+async def test_orders_count():
+    """Test the orders count functionality."""
+    try:
+        success = await telegram_service.send_test_report_with_orders()
+        
+        if success:
+            return {"status": "success", "message": "Orders count test sent successfully"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send orders count test"
+            )
+    except Exception as e:
+        logger.error(f"Error testing orders count: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error testing orders count: {str(e)}"
+        )
+
 @router.get("/status", dependencies=[require_api_key()])
 async def get_telegram_status():
     """Get the current status of the Telegram bot and scheduler."""
