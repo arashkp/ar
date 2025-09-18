@@ -1,4 +1,4 @@
-import { apiPost, validateRequiredFields, validatePositiveNumber, formatErrorMessage } from './apiHelpers';
+import { apiPost, apiGet, validateRequiredFields, validatePositiveNumber, formatErrorMessage } from './apiHelpers';
 
 // Using apiHelpers for base URL configuration
 
@@ -48,5 +48,25 @@ export const placeOrder = async (orderDetails) => {
     return response.data;
   } else {
     return { error: formatErrorMessage(response, 'Failed to place order') };
+  }
+};
+
+/**
+ * Fetches current orders for all symbols.
+ * @returns {Promise<Array|null>} Array of current orders or null on error.
+ */
+export const getCurrentOrders = async () => {
+  try {
+    const response = await apiGet('/spot-trades/orders');
+    
+    if (response.success) {
+      return response.data;
+    } else {
+      console.error('Error fetching current orders:', response.error);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error fetching current orders:', error);
+    return null;
   }
 };

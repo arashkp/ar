@@ -149,6 +149,14 @@ class TelegramNotificationService:
             logger.error(f"Error fetching orders info for {symbol}: {e}")
             return 0, ""
     
+    async def fetch_current_orders_count(self, symbol: str) -> int:
+        """
+        Fetch current orders count for a specific symbol.
+        Returns the count of current orders.
+        """
+        count, _ = await self.fetch_orders_info(symbol)
+        return count
+    
     async def generate_market_report(self) -> str:
         """Generate a comprehensive market report using real data."""
         try:
@@ -161,6 +169,7 @@ class TelegramNotificationService:
             # Initialize overall portfolio variables
             total_invested = 0
             total_current_value = 0
+            usdt_balance = 0
             
             # Process Bitunix data
             if asset_data["bitunix"] and "assets" in asset_data["bitunix"]:
@@ -169,14 +178,25 @@ class TelegramNotificationService:
                 # Use all assets from backward-analysis (same as Asset Overview)
                 filtered_bitunix_assets = bitunix_assets
                 
-                # Calculate Bitunix portfolio summary
-                bitunix_total_cost = sum(float(asset.get("total_buy_value", 0)) for asset in filtered_bitunix_assets)
-                bitunix_current_value = sum(float(asset.get("current_balance", 0)) * float(asset.get("current_price", 0)) for asset in filtered_bitunix_assets)
+                # Calculate Bitunix portfolio summary (same logic as Asset Overview)
+                # Separate USDT from other assets
+                usdt_asset = next((asset for asset in filtered_bitunix_assets if asset.get("symbol") == "USDT"), None)
+                crypto_assets = [asset for asset in filtered_bitunix_assets if asset.get("symbol") != "USDT" and "(BGet)" not in asset.get("symbol", "")]
+                
+                # Calculate crypto-only values (excluding USDT and Bitget) - same as Asset Overview
+                bitunix_crypto_cost = sum(float(asset.get("total_buy_value", 0)) for asset in crypto_assets if asset.get("total_buy_value") is not None)
+                bitunix_crypto_current = sum(float(asset.get("current_balance", 0)) * float(asset.get("current_price", 0)) for asset in crypto_assets if asset.get("current_balance") is not None and asset.get("current_price") is not None)
+                bitunix_usdt_balance = float(usdt_asset.get("current_balance", 0)) if usdt_asset else 0
+                
+                # Total values (crypto + USDT) - same as Asset Overview
+                bitunix_total_cost = bitunix_crypto_cost + bitunix_usdt_balance
+                bitunix_current_value = bitunix_crypto_current + bitunix_usdt_balance
                 bitunix_pnl = bitunix_current_value - bitunix_total_cost
                 bitunix_pnl_percentage = (bitunix_pnl / bitunix_total_cost * 100) if bitunix_total_cost > 0 else 0
                 
                 total_invested += bitunix_total_cost
                 total_current_value += bitunix_current_value
+                usdt_balance = bitunix_usdt_balance
                 
                 # Sort assets by current value
                 sorted_bitunix_assets = sorted(filtered_bitunix_assets, key=lambda x: float(x.get("current_balance", 0)) * float(x.get("current_price", 0)), reverse=True)
@@ -185,6 +205,7 @@ class TelegramNotificationService:
                 for i, asset in enumerate(sorted_bitunix_assets[:5], 1):
                     symbol = asset.get("symbol", "Unknown")
                     current_value = float(asset.get("current_balance", 0)) * float(asset.get("current_price", 0))
+                    cost_value = float(asset.get("total_buy_value", 0))
                     pnl_percentage = float(asset.get("unrealized_pnl_percentage", 0))
                     
                     # Remove /USDT from symbols to match the desired format
@@ -193,9 +214,9 @@ class TelegramNotificationService:
                     # Skip USDT for orders info
                     if symbol != "USDT":
                         orders_count, _ = await self.fetch_orders_info(display_symbol)
-                        report += f"{i}. {display_symbol}: ${current_value:,.2f} ({pnl_percentage:+.2f}%) | {orders_count} CO\n"
+                        report += f"{i}. {display_symbol}: ${cost_value:,.0f} | ${current_value:,.0f} ({pnl_percentage:+.1f}%) | {orders_count} O\n"
                     else:
-                        report += f"{i}. {display_symbol}: ${current_value:,.2f} ({pnl_percentage:+.2f}%)\n"
+                        report += f"{i}. {display_symbol}: ${cost_value:,.0f} | ${current_value:,.0f} ({pnl_percentage:+.1f}%)\n"
                 
                 report += "\n"
                 
@@ -230,7 +251,9 @@ class TelegramNotificationService:
                     # Remove /USDT from symbols to match the desired format
                     display_symbol = symbol.replace("/USDT", "") if symbol != "USDT" else "USDT"
                     
-                    report += f"• {display_symbol}: {balance:,.2f} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
+                    # Format balance - no decimals for values over 1M
+                    balance_formatted = f"{balance:,.0f}" if balance >= 1000000 else f"{balance:,.2f}"
+                    report += f"• {display_symbol}: {balance_formatted} @ ${format_price_smart(avg_entry)} → ${format_price_smart(current_price)}\n"
             else:
                 report += f"📈 <b>Bitunix Portfolio</b>\n"
                 report += f"No data available.\n\n"
@@ -238,14 +261,23 @@ class TelegramNotificationService:
             
             # Overall portfolio summary
             if total_invested > 0:
+                
+                # Calculate P&L without USDT (crypto only)
+                total_crypto_cost = total_invested - usdt_balance
+                total_crypto_current = total_current_value - usdt_balance
+                total_pnl_without_usdt = total_crypto_current - total_crypto_cost
+                total_pnl_percentage_without_usdt = (total_pnl_without_usdt / total_crypto_cost * 100) if total_crypto_cost > 0 else 0
+                
+                # Calculate total P&L (including USDT)
                 total_pnl = total_current_value - total_invested
                 total_pnl_percentage = (total_pnl / total_invested * 100)
                 
                 report += "\n"
                 report += f"💰 <b>Overall Portfolio Summary</b>\n"
-                report += f"• Total Invested: ${total_invested:,.2f}\n"
-                report += f"• Current Value: ${total_current_value:,.2f}\n"
-                report += f"• Total P&L: ${total_pnl:,.2f} ({total_pnl_percentage:+.2f}%)\n"
+                report += f"• Total + USDT: ${total_invested:,.2f}\n"
+                report += f"• Current + USDT: ${total_current_value:,.2f} | ${total_pnl:,.2f} ({total_pnl_percentage:+.2f}%)\n"
+                report += f"\nTotal Cost: ${total_crypto_cost:,.2f}\n"
+                report += f"Cost + P&L: ${total_crypto_current:,.2f} | ${total_pnl_without_usdt:,.2f} ({total_pnl_percentage_without_usdt:+.2f}%)"
             
             return report
             

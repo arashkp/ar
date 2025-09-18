@@ -7,6 +7,7 @@ import {
   getTimeframeDisplayName
 } from '../api/historical';
 import { checkBitgetAvailability as checkBitgetAvailabilityHelper } from '../api/apiHelpers';
+import { getCurrentOrders } from '../api/orders';
 
 const AssetOverview = () => {
   const [assetData, setAssetData] = useState(null);
@@ -247,6 +248,40 @@ const AssetOverview = () => {
     return num.toFixed(decimals).replace(/\.?0+$/, '');
   };
 
+  // Function to get orders count by symbol
+  const getOrdersCountBySymbol = () => {
+    const ordersCount = {};
+    const processedOrders = new Set(); // Track processed orders to avoid double counting
+    
+    Object.keys(currentOrders).forEach(symbol => {
+      const orders = currentOrders[symbol];
+      if (orders && orders.length > 0) {
+        // Filter for open/pending orders only
+        const openOrders = orders.filter(order => 
+          order.status === 'open' || order.status === 1 || order.status === 'pending'
+        );
+        
+        openOrders.forEach(order => {
+          // Use order ID or a combination of fields to create unique identifier
+          const orderId = order.order_id || `${order.symbol}_${order.price}_${order.quantity}_${order.side}`;
+          
+          if (!processedOrders.has(orderId)) {
+            processedOrders.add(orderId);
+            
+            // Only use base symbols (e.g., "BTC" not "BTC/USDT")
+            const baseSymbol = symbol.split('/')[0];
+            if (!ordersCount[baseSymbol]) {
+              ordersCount[baseSymbol] = 0;
+            }
+            ordersCount[baseSymbol] += 1;
+          }
+        });
+      }
+    });
+    
+    return ordersCount;
+  };
+
   const formatPrice = (price) => {
     if (price === null || price === undefined || isNaN(price)) return '0';
     // Convert scientific notation to decimal for better readability
@@ -475,7 +510,23 @@ const AssetOverview = () => {
              </span>
              Portfolio Summary
            </h2>
-           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+             <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+               <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">Current Orders</div>
+               <div className="text-lg font-bold text-gray-900 dark:text-white">
+                 {(() => {
+                   const ordersCount = getOrdersCountBySymbol();
+                   const ordersList = Object.entries(ordersCount)
+                     .filter(([symbol, count]) => count > 0)
+                     .map(([symbol, count]) => `${symbol} ${count}`)
+                     .join(', ');
+                   return ordersList || 'No active orders';
+                 })()}
+               </div>
+               <div className="text-xs text-gray-500 dark:text-gray-500">
+                 {Object.values(getOrdersCountBySymbol()).reduce((sum, count) => sum + count, 0)} total orders
+               </div>
+             </div>
              <div className="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                <div className="text-sm font-semibold text-gray-600 dark:text-gray-400">USDT Balance</div>
                <div className="text-xl font-bold text-gray-900 dark:text-white">${formatValue(bitunixUsdtBalance)}</div>
@@ -549,6 +600,7 @@ const AssetOverview = () => {
             </div>
           )}
        </div>
+
 
              {/* Assets Grid - Dynamic columns based on exchange availability */}
        <div className={`grid gap-3 w-full ${bitgetAvailable ? 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-5' : 'grid-cols-1 lg:grid-cols-3 xl:grid-cols-5'}`}>
