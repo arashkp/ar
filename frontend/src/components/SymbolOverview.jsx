@@ -13,6 +13,14 @@ const formatNumber = (value, symbol = '') => {
     precision = 0; // Standard precision for BTC
   } else if (symbol.includes('ETH')) {
     precision = 1; // Standard precision for ETH
+  } else if (symbol.includes('SUI')) {
+    precision = 3; // Higher precision for SUI
+  } else if (symbol.includes('HBAR')) {
+    precision = 4;
+  } else if (symbol.includes('HYPE')) {
+    precision = 2;
+  } else if (symbol.includes('BONK')) {
+    precision = 7;
   }
   
   const num = parseFloat(value);
@@ -100,6 +108,9 @@ const SymbolOverview = ({ symbolData, onPriceClick, onSymbolClick }) => {
     sma_30, 
     sma_150, 
     sma_300, 
+    w_sma_20,
+    w_ema_21,
+    w_sma_50,
     atr_14,
     support_levels = [],
     resistance_levels = [],
@@ -119,26 +130,95 @@ const SymbolOverview = ({ symbolData, onPriceClick, onSymbolClick }) => {
 
   // Gather all levels (support, resistance, EMAs, SMAs, etc.)
   const levels = [
-    ...resistance_levels.map(l => ({ ...l, type: 'resistance', label: l.strength })),
-    ...support_levels.map(l => ({ ...l, type: 'support', label: l.strength })),
-    ...(ema_21 ? [{ level: ema_21, type: 'ema', label: 'EMA 21' }] : []),
-    ...(ema_89 ? [{ level: ema_89, type: 'ema', label: 'EMA 89' }] : []),
-    ...(sma_30 ? [{ level: sma_30, type: 'sma', label: 'SMA 30' }] : []),
-    ...(sma_150 ? [{ level: sma_150, type: 'sma', label: 'SMA 150' }] : []),
-    ...(sma_300 ? [{ level: sma_300, type: 'sma', label: 'SMA 300' }] : [])
+    ...resistance_levels.map((l) => ({ ...l, type: 'resistance', label: l.strength, isIndicator: false })),
+    ...support_levels.map((l) => ({ ...l, type: 'support', label: l.strength, isIndicator: false })),
+    ...(ema_21 ? [{ level: ema_21, type: 'ema', label: 'EMA 21', isIndicator: true }] : []),
+    ...(ema_89 ? [{ level: ema_89, type: 'ema', label: 'EMA 89', isIndicator: true }] : []),
+    ...(sma_30 ? [{ level: sma_30, type: 'sma', label: 'SMA 30', isIndicator: true }] : []),
+    ...(sma_150 ? [{ level: sma_150, type: 'sma', label: 'SMA 150', isIndicator: true }] : []),
+    ...(sma_300 ? [{ level: sma_300, type: 'sma', label: 'SMA 300', isIndicator: true }] : []),
+    ...(w_sma_20 ? [{ level: w_sma_20, type: 'sma', label: '20W SMA', isIndicator: true }] : []),
+    ...(w_ema_21 ? [{ level: w_ema_21, type: 'ema', label: '21W EMA', isIndicator: true }] : []),
+    ...(w_sma_50 ? [{ level: w_sma_50, type: 'sma', label: '50W SMA', isIndicator: true }] : [])
   ];
 
-  // Remove duplicates (by level+label)
-  const uniqueLevels = Array.from(new Map(levels.map(l => [l.level + '-' + l.label, l])).values());
+  const uniqueLevels = Array.from(
+    new Map(
+      levels
+        .filter((l) => Number.isFinite(l.level) && l.level > 0)
+        .map((l) => [`${String(l.label)}-${l.level}`, l])
+    ).values()
+  );
 
-  // Sort: resistance (above price, descending), price, support (below price, descending)
-  const above = uniqueLevels.filter(l => l.level > current_price).sort((a, b) => b.level - a.level);
-  const below = uniqueLevels.filter(l => l.level < current_price).sort((a, b) => b.level - a.level);
+  const MIN_LEVELS_PER_SIDE = 5;
 
-  // Find the top 2 strength levels in resistance and support
+  const buildLevelList = (direction) => {
+    const candidates = uniqueLevels.filter((item) =>
+      direction === 'above' ? item.level > current_price : item.level < current_price
+    );
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const annotate = (items) =>
+      items
+        .map((item) => ({
+          ...item,
+          distance: Math.abs(item.level - current_price),
+        }))
+        .sort((a, b) => a.distance - b.distance);
+
+    const indicators = annotate(candidates.filter((item) => item.isIndicator));
+    const others = annotate(candidates.filter((item) => !item.isIndicator));
+
+    const merged = [];
+    const pushUnique = (item) => {
+      if (!merged.some((existing) => existing.level === item.level && existing.label === item.label)) {
+        merged.push(item);
+      }
+    };
+
+    indicators.forEach(pushUnique);
+
+    const targetCount = Math.max(MIN_LEVELS_PER_SIDE, indicators.length);
+    for (const item of others) {
+      if (merged.length >= targetCount) {
+        break;
+      }
+      pushUnique(item);
+    }
+
+    if (merged.length < targetCount) {
+      const remaining = annotate(
+        candidates.filter(
+          (candidate) => !merged.some((existing) => existing.level === candidate.level && existing.label === candidate.label)
+        )
+      );
+      for (const item of remaining) {
+        if (merged.length >= targetCount) {
+          break;
+        }
+        pushUnique(item);
+      }
+    }
+
+    return merged
+      .sort((a, b) => b.level - a.level)
+      .map(({ distance, ...rest }) => rest);
+  };
+
+  const above = buildLevelList('above');
+  const below = buildLevelList('below');
+
+  // Determine strongest support/resistance levels (excluding indicators)
   const getTopStrengthIndexes = (arr) => {
-    const sorted = [...arr].sort((a, b) => (parseInt(b.label) || 0) - (parseInt(a.label) || 0));
-    return sorted.slice(0, 2).map(l => arr.findIndex(x => x.level === l.level && x.label === l.label));
+    const srLevels = arr.filter((item) => !item.isIndicator);
+    const sorted = [...srLevels].sort((a, b) => (parseInt(b.label, 10) || 0) - (parseInt(a.label, 10) || 0));
+    return sorted
+      .slice(0, 2)
+      .map((level) => arr.findIndex((x) => x.level === level.level && x.label === level.label))
+      .filter((idx) => idx !== -1);
   };
   const topResIdx = getTopStrengthIndexes(above);
   const topSupIdx = getTopStrengthIndexes(below);

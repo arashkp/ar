@@ -18,6 +18,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+# Ensure pandas DataFrame objects have the lightweight TA accessor available
+_add_ta_methods_to_dataframe()
+
+
 # Helper functions for price precision
 def get_price_precision(price: float) -> int:
     price_str = str(price)
@@ -108,7 +112,7 @@ def generate_fibonacci_levels(
                 break
 
             formatted_level = format_value(level_raw, price_precision)
-            if formatted_level is None:
+            if formatted_level is None or formatted_level <= 0:
                 continue
 
             # Check gap against all levels already accepted (existing + Fibs generated so far)
@@ -143,7 +147,7 @@ def generate_fibonacci_levels(
                 break
 
             formatted_level = format_value(level_raw, price_precision)
-            if formatted_level is None:
+            if formatted_level is None or formatted_level <= 0:
                 continue
 
             # Check gap against all levels already accepted (existing + Fibs generated so far)
@@ -192,6 +196,10 @@ class MarketOverviewItem(BaseModel):
     sma_150: float | None = None
     sma_300: float | None = None
     atr_14: float | None = None
+    # Weekly moving averages
+    w_sma_20: float | None = None  # 20-week SMA
+    w_ema_21: float | None = None  # 21-week EMA
+    w_sma_50: float | None = None  # 50-week SMA
     support_levels: List[LevelItem]
     resistance_levels: List[LevelItem]
     # DCA Analysis Fields
@@ -210,10 +218,12 @@ class MarketOverviewItem(BaseModel):
 SYMBOL_CONFIG = [
     {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin", "desired_gap_usdt": 500.0},
     {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum", "desired_gap_usdt": 40},
-    {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin", "desired_gap_usdt": 0.003},
+    # {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin", "desired_gap_usdt": 0.003},
     {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui", "desired_gap_usdt": 0.05},
+    {"symbol": "HBAR/USDT", "exchange_id": "binance", "name": "Hedera", "desired_gap_usdt": 0.005},
+    {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin", "desired_gap_usdt": 0.5},
+    {"symbol": "BONK/USDT", "exchange_id": "binance", "name": "Bonk", "desired_gap_usdt": 0.00001},
             # {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat", "desired_gap_usdt": 0.005},  # MEXC commented out
-        # {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin", "desired_gap_usdt": 0.7}  # MEXC commented out
 ]
 
 router = APIRouter()
@@ -261,6 +271,7 @@ async def get_market_overview():
                         results.append(MarketOverviewItem(
                             symbol=symbol, current_price=0.0, ema_21=None, ema_89=None,
                             sma_30=None, sma_150=None, sma_300=None, atr_14=None,
+                            w_sma_20=None, w_ema_21=None, w_sma_50=None,
                             support_levels=[], resistance_levels=[]
                         ))
                         continue
@@ -345,6 +356,7 @@ async def get_market_overview():
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price if current_price is not None else 0.0,
                         ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
+                        w_sma_20=None, w_ema_21=None, w_sma_50=None,
                         support_levels=[], resistance_levels=[]
                     ))
                     continue
@@ -437,7 +449,19 @@ async def get_market_overview():
                 atr_component = atr_value * settings.ATR_MULTIPLIER_FOR_GAP if atr_value is not None and pd.notna(
                     atr_value) else 0.0
 
+                decimal_floor = 10 ** (-price_precision) if price_precision > 0 else 0.0
+
                 effective_minimum_gap = max(atr_component, current_symbol_desired_gap)
+
+                if current_price_raw and current_price_raw > 0:
+                    if current_price_raw < 0.1:
+                        low_price_gap_cap = current_price_raw * 0.1
+                        min_allowed_gap = decimal_floor if decimal_floor > 0 else current_symbol_desired_gap * 0.1
+                        if low_price_gap_cap > 0:
+                            effective_minimum_gap = max(
+                                min(effective_minimum_gap, low_price_gap_cap),
+                                min_allowed_gap
+                            )
 
                 atr_log_display = f"{atr_value:.4f}" if atr_value is not None and pd.notna(atr_value) else "N/A"
                 logger.info(
@@ -519,6 +543,24 @@ async def get_market_overview():
                             support_level_items.sort(key=lambda x: x.level, reverse=True)
                             support_level_items = support_level_items[:5]
 
+                        desired_support_count = 5
+                        if len(support_level_items) < desired_support_count:
+                            tick_size = decimal_floor if decimal_floor and decimal_floor > 0 else current_price_raw * 0.01
+                            if tick_size <= 0:
+                                tick_size = max(current_price_raw * 0.001, 1e-10)
+                            probe_level = current_price_raw - tick_size
+                            safety_counter = 0
+                            while len(support_level_items) < desired_support_count and probe_level > 0 and safety_counter < 100:
+                                formatted_probe = format_value(probe_level, price_precision)
+                                if formatted_probe and formatted_probe > 0:
+                                    is_duplicate = any(abs(formatted_probe - item.level) < tick_size * 0.5 for item in support_level_items)
+                                    if not is_duplicate:
+                                        support_level_items.append(LevelItem(level=formatted_probe, strength=0))
+                                probe_level -= tick_size
+                                safety_counter += 1
+                            support_level_items.sort(key=lambda x: x.level, reverse=True)
+                            support_level_items = support_level_items[:desired_support_count]
+
                         logger.info(
                             f"Final support levels for {symbol} ({len(support_level_items)} levels): {[item.level for item in support_level_items]}")
 
@@ -546,6 +588,24 @@ async def get_market_overview():
                                     break
                         resistance_level_items = resistance_level_items_filtered
                         resistance_level_items.sort(key=lambda x: x.level)
+
+                        desired_resistance_count = 5
+                        if len(resistance_level_items) < desired_resistance_count:
+                            tick_size = decimal_floor if decimal_floor and decimal_floor > 0 else current_price_raw * 0.01
+                            if tick_size <= 0:
+                                tick_size = max(current_price_raw * 0.001, 1e-10)
+                            probe_level = current_price_raw + tick_size
+                            safety_counter = 0
+                            while len(resistance_level_items) < desired_resistance_count and safety_counter < 100:
+                                formatted_probe = format_value(probe_level, price_precision)
+                                if formatted_probe and formatted_probe > 0:
+                                    is_duplicate = any(abs(formatted_probe - item.level) < tick_size * 0.5 for item in resistance_level_items)
+                                    if not is_duplicate:
+                                        resistance_level_items.append(LevelItem(level=formatted_probe, strength=0))
+                                probe_level += tick_size
+                                safety_counter += 1
+                            resistance_level_items.sort(key=lambda x: x.level)
+                            resistance_level_items = resistance_level_items[:desired_resistance_count]
                         logger.debug(
                             f"Symbol: {symbol} - Resistance levels after ATR filtering ({len(resistance_level_items)}): {[item.level for item in resistance_level_items]}")
 
@@ -620,6 +680,7 @@ async def get_market_overview():
                     results.append(MarketOverviewItem(
                         symbol=symbol, current_price=current_price,
                         ema_21=None, ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=formatted_atr_14,
+                        w_sma_20=None, w_ema_21=None, w_sma_50=None,
                         support_levels=support_level_items,
                         resistance_levels=resistance_level_items,
                         # DCA Analysis (minimal data available)
@@ -649,6 +710,62 @@ async def get_market_overview():
                 formatted_sma_150 = format_value(raw_sma_150, price_precision) if pd.notna(raw_sma_150) else None
                 raw_sma_300 = df['sma_300'].iloc[-1]
                 formatted_sma_300 = format_value(raw_sma_300, price_precision) if pd.notna(raw_sma_300) else None
+
+                # Weekly OHLCV for weekly MAs
+                w_cached_df: Optional[pd.DataFrame] = read_ohlcv_from_cache(settings.CACHE_DIRECTORY, symbol, timeframe='1w')
+                w_last_cached_timestamp: Optional[int] = None
+                if w_cached_df is not None and not w_cached_df.empty:
+                    w_cached_df.sort_values(by='timestamp', ascending=True, inplace=True)
+                    w_last_cached_timestamp = w_cached_df['timestamp'].iloc[-1]
+
+                w_fetch_limit = settings.MAX_CANDLES_TO_CACHE
+                w_fetch_since = None
+                if w_last_cached_timestamp is not None:
+                    w_fetch_since = int(w_last_cached_timestamp)
+                w_ohlcv = []
+                if exchange:
+                    try:
+                        w_ohlcv = await exchange.fetch_ohlcv(symbol, timeframe='1w', since=w_fetch_since, limit=w_fetch_limit)
+                    except Exception as e:
+                        logger.error(f"[{symbol}] Error fetching weekly OHLCV: {e}")
+                        w_ohlcv = []
+                w_df = pd.DataFrame()
+                if w_ohlcv:
+                    w_df = pd.DataFrame(w_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    w_df['timestamp'] = w_df['timestamp'].astype('int64')
+                    w_df.sort_values(by='timestamp', ascending=True, inplace=True)
+                if w_cached_df is not None and not w_cached_df.empty:
+                    w_final_df = pd.concat([w_cached_df, w_df], ignore_index=True)
+                else:
+                    w_final_df = w_df
+                if not w_final_df.empty:
+                    w_final_df.drop_duplicates(subset=['timestamp'], keep='last', inplace=True)
+                    w_final_df.sort_values(by='timestamp', ascending=True, inplace=True)
+                    if len(w_final_df) > settings.MAX_CANDLES_TO_CACHE:
+                        w_final_df = w_final_df.tail(settings.MAX_CANDLES_TO_CACHE)
+                    w_final_df.reset_index(drop=True, inplace=True)
+                    try:
+                        write_ohlcv_to_cache(settings.CACHE_DIRECTORY, symbol, w_final_df, timeframe='1w')
+                    except Exception as e:
+                        logger.error(f"[{symbol}] Error writing weekly OHLCV to cache: {e}")
+                
+                # Compute weekly MAs if we have enough data
+                w_sma_20_val = None
+                w_ema_21_val = None
+                w_sma_50_val = None
+                if 'close' in w_final_df.columns and not w_final_df.empty:
+                    try:
+                        w_final_df['w_sma_20'] = w_final_df.ta.sma(length=20)
+                        w_final_df['w_ema_21'] = w_final_df.ta.ema(length=21)
+                        w_final_df['w_sma_50'] = w_final_df.ta.sma(length=50)
+                        w_sma_20_raw = w_final_df['w_sma_20'].iloc[-1]
+                        w_ema_21_raw = w_final_df['w_ema_21'].iloc[-1]
+                        w_sma_50_raw = w_final_df['w_sma_50'].iloc[-1]
+                        w_sma_20_val = format_value(w_sma_20_raw, price_precision) if pd.notna(w_sma_20_raw) else None
+                        w_ema_21_val = format_value(w_ema_21_raw, price_precision) if pd.notna(w_ema_21_raw) else None
+                        w_sma_50_val = format_value(w_sma_50_raw, price_precision) if pd.notna(w_sma_50_raw) else None
+                    except Exception as e:
+                        logger.error(f"[{symbol}] Error computing weekly moving averages: {e}")
 
                 # Calculate additional indicators for DCA analysis
                 df['rsi_14'] = df.ta.rsi(length=14)
@@ -700,6 +817,9 @@ async def get_market_overview():
                     sma_150=formatted_sma_150,
                     sma_300=formatted_sma_300,
                     atr_14=formatted_atr_14,
+                    w_sma_20=w_sma_20_val,
+                    w_ema_21=w_ema_21_val,
+                    w_sma_50=w_sma_50_val,
                     support_levels=support_level_items,
                     resistance_levels=resistance_level_items,
                     # DCA Analysis
@@ -721,6 +841,7 @@ async def get_market_overview():
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
+                                       w_sma_20=None, w_ema_21=None, w_sma_50=None,
                                        support_levels=[], resistance_levels=[],
                                        # DCA Analysis (error state)
                                        dca_signal="wait",
@@ -739,6 +860,7 @@ async def get_market_overview():
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
+                                       w_sma_20=None, w_ema_21=None, w_sma_50=None,
                                        support_levels=[], resistance_levels=[],
                                        # DCA Analysis (error state)
                                        dca_signal="wait",
@@ -752,17 +874,18 @@ async def get_market_overview():
                                        volume_status=None,
                                        market_sentiment="neutral"))
             except Exception as e:
-                logger.error(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}. Default data returned.")
+                logger.error(f"An unexpected error occurred for {symbol} on {exchange_id}: {e}. Default data returned.", exc_info=True)
                 formatted_current_price_on_error = format_value(0.0, 2)
                 results.append(
                     MarketOverviewItem(symbol=symbol, current_price=formatted_current_price_on_error, ema_21=None,
                                        ema_89=None, sma_30=None, sma_150=None, sma_300=None, atr_14=None,
+                                       w_sma_20=None, w_ema_21=None, w_sma_50=None,
                                        support_levels=[], resistance_levels=[],
                                        # DCA Analysis (error state)
                                        dca_signal="wait",
                                        dca_confidence=0.0,
                                        dca_amount_multiplier=0.5,
-                                       dca_reasoning=["Unexpected error - unable to analyze"],
+                                       dca_reasoning=[f"Unexpected error - unable to analyze: {e}"],
                                        rsi_14=None,
                                        volume_ratio=None,
                                        volume_ratio_avg=None,

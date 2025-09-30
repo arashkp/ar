@@ -90,50 +90,54 @@ def rsi(data: pd.Series, length: int = 14) -> pd.Series:
 
 
 # Monkey patch pandas DataFrame to add ta methods for compatibility
-def _add_ta_methods_to_dataframe():
-    """Add ta methods to pandas DataFrame for compatibility with existing code."""
-    
-    def ta_ema(self, length: int = 14, **kwargs) -> pd.Series:
-        """Calculate EMA on the DataFrame's close column."""
-        if 'close' in self.columns:
-            return ema(self['close'], length)
-        elif len(self.columns) == 1:
-            return ema(self.iloc[:, 0], length)
-        else:
-            raise ValueError("Cannot determine which column to use for EMA calculation")
-    
-    def ta_sma(self, length: int = 14, **kwargs) -> pd.Series:
-        """Calculate SMA on the DataFrame's close column."""
-        if 'close' in self.columns:
-            return sma(self['close'], length)
-        elif len(self.columns) == 1:
-            return sma(self.iloc[:, 0], length)
-        else:
-            raise ValueError("Cannot determine which column to use for SMA calculation")
-    
-    def ta_atr(self, length: int = 14, **kwargs) -> pd.Series:
-        """Calculate ATR using high, low, and close columns."""
+class _TAAccessor:
+    """Lightweight TA accessor compatible with the legacy pandas_ta API used in the app."""
+
+    def __init__(self, df: pd.DataFrame):
+        self._df = df
+
+    def _resolve_close_series(self) -> pd.Series:
+        if 'close' in self._df.columns:
+            return self._df['close']
+        if len(self._df.columns) == 1:
+            return self._df.iloc[:, 0]
+        raise ValueError("Cannot determine which column to use for close price based calculations")
+
+    def ema(self, length: int = 14, **kwargs) -> pd.Series:
+        return ema(self._resolve_close_series(), length)
+
+    def sma(self, length: int = 14, **kwargs) -> pd.Series:
+        return sma(self._resolve_close_series(), length)
+
+    def atr(self, length: int = 14, **kwargs) -> pd.Series:
         required_cols = ['high', 'low', 'close']
-        if not all(col in self.columns for col in required_cols):
+        if not all(col in self._df.columns for col in required_cols):
             raise ValueError(f"ATR calculation requires columns: {required_cols}")
-        return atr(self['high'], self['low'], self['close'], length)
-    
-    def ta_rsi(self, length: int = 14, **kwargs) -> pd.Series:
-        """Calculate RSI on the DataFrame's close column."""
-        if 'close' in self.columns:
-            return rsi(self['close'], length)
-        elif len(self.columns) == 1:
-            return rsi(self.iloc[:, 0], length)
-        else:
-            raise ValueError("Cannot determine which column to use for RSI calculation")
-    
-    # Add methods to pandas DataFrame
-    pd.DataFrame.ta = type('TA', (), {})
-    pd.DataFrame.ta.ema = ta_ema
-    pd.DataFrame.ta.sma = ta_sma
-    pd.DataFrame.ta.atr = ta_atr
-    pd.DataFrame.ta.rsi = ta_rsi
+        return atr(self._df['high'], self._df['low'], self._df['close'], length)
+
+    def rsi(self, length: int = 14, **kwargs) -> pd.Series:
+        return rsi(self._resolve_close_series(), length)
+
+
+class _TADescriptor:
+    """Descriptor that attaches the TA accessor to pandas DataFrames."""
+
+    def __get__(self, instance: Optional[pd.DataFrame], owner):
+        if instance is None:
+            return self
+        return _TAAccessor(instance)
+
+
+def _add_ta_methods_to_dataframe():
+    """Add .ta accessor to pandas DataFrame if pandas_ta is not available."""
+    existing = getattr(pd.DataFrame, 'ta', None)
+    if isinstance(existing, _TADescriptor):
+        return  # Already patched by this helper
+    if existing is not None and not callable(existing):
+        # Respect any existing TA accessor (e.g., pandas_ta) to avoid conflicts
+        return
+    pd.DataFrame.ta = _TADescriptor()
 
 
 # Initialize the ta methods
-_add_ta_methods_to_dataframe() 
+_add_ta_methods_to_dataframe()

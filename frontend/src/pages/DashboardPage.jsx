@@ -4,6 +4,7 @@ import SymbolOverview from '../components/SymbolOverview.jsx';
 import OrderEntryForm from '../components/OrderEntryForm.jsx'; // Import OrderEntryForm
 import LLMPromptGenerator from '../components/LLMPromptGenerator.jsx'; // Import LLM Prompt Generator
 import DCAAnalysisSummary from '../components/DCAAnalysisSummary.jsx'; // Import DCA Analysis Summary
+import WeeklyMATable from '../components/WeeklyMATable.jsx'; // Weekly MA Table
 import HistoricalPerformance from '../components/HistoricalPerformance.jsx'; // Import Historical Performance
 
 //const MOCK_MARKET_OVERVIEW_DATA = []
@@ -221,16 +222,18 @@ const DashboardPage = () => {
                   </div>
                 ))}
               </div>
-            </div>
+          </div>
 
-            {/* DCA Analysis Summary */}
-            <DCAAnalysisSummary marketData={data} />
+          {/* Weekly Moving Averages Table (below Market Overview) */}
+          <WeeklyMATable marketData={data} />
+
+          {/* DCA Analysis Summary */}
+          <DCAAnalysisSummary marketData={data} />
             
             {/* Historical Performance Section */}
             <HistoricalPerformance selectedSymbol={selectedSymbol} />
           </div>
 
-          {/* Order Entry Section - Conditional */}
           {showOrderForm && (
             <div className="lg:w-1/3">
               <div className="sticky top-6">

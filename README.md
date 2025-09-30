@@ -102,3 +102,16 @@ src/
 ├── utils/               # Utility functions
 └── core/               # Core configuration
 ```
+
+## Documentation
+
+Reference guides and internal notes:
+
+- [DCA_ANALYSIS_ENHANCEMENTS.md](docs/DCA_ANALYSIS_ENHANCEMENTS.md) — Summary of DCA enhancements, metrics, and dashboard changes.
+- [DCA_SIGNAL_OVERVIEW.md](docs/DCA_SIGNAL_OVERVIEW.md) — Breakdown of how DCA signals, confidence, and multipliers are computed.
+- [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) — Steps for deploying the AR Trading API across common platforms.
+- [DUPLICATION_ANALYSIS.md](docs/DUPLICATION_ANALYSIS.md) — Investigation of duplicate order scenarios and mitigation steps.
+- [ENHANCED_VOLUME_ANALYSIS.md](docs/ENHANCED_VOLUME_ANALYSIS.md) — Details on volume ratio metrics and interpretation used in dashboards.
+- [MIGRATION_COMPLETE.md](docs/MIGRATION_COMPLETE.md) — Notes from the framework/service migration wrap-up.
+- [SECURITY_SETUP.md](docs/SECURITY_SETUP.md) — Security hardening checklist, secrets handling, and access control notes.
+
