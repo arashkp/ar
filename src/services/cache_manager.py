@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import glob
 from typing import List, Optional
 
 # Define the column names for the cache file
@@ -84,3 +85,19 @@ def write_ohlcv_to_cache(cache_dir: str, symbol: str, data: pd.DataFrame, timefr
         # print(f"Error writing cache file for {symbol} ({timeframe}) at {filepath}: {e}") # Debug
         # Handle potential errors, e.g., disk full, permissions
         raise # Re-raise the exception for now
+
+def clear_all_cache(cache_dir: str):
+    """
+    Clears all cached OHLCV files from the cache directory.
+    Useful when switching exchanges or when cache becomes stale.
+    """
+    ensure_cache_directory_exists(cache_dir)
+    cache_files = glob.glob(os.path.join(cache_dir, "*.csv"))
+    removed_count = 0
+    for filepath in cache_files:
+        try:
+            os.remove(filepath)
+            removed_count += 1
+        except Exception as e:
+            print(f"Error removing cache file {filepath}: {e}")
+    print(f"Cleared {removed_count} cache files from {cache_dir}")

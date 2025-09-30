@@ -721,7 +721,8 @@ async def get_market_overview():
                     w_cached_df.sort_values(by='timestamp', ascending=True, inplace=True)
                     w_last_cached_timestamp = w_cached_df['timestamp'].iloc[-1]
 
-                w_fetch_limit = settings.MAX_CANDLES_TO_CACHE
+                # For weekly data, fetch at least 52 weeks (1 year) to ensure 50W SMA can be calculated
+                w_fetch_limit = max(52, settings.MAX_CANDLES_TO_CACHE)
                 w_fetch_since = None
                 if w_last_cached_timestamp is not None:
                     w_fetch_since = int(w_last_cached_timestamp)
@@ -757,16 +758,39 @@ async def get_market_overview():
                 w_ema_21_val = None
                 w_sma_50_val = None
                 if 'close' in w_final_df.columns and not w_final_df.empty:
+                    weeks_available = len(w_final_df)
+                    logger.info(f"[{symbol}] Weekly data: {weeks_available} candles available for MA calculation")
                     try:
-                        w_final_df['w_sma_20'] = w_final_df.ta.sma(length=20)
-                        w_final_df['w_ema_21'] = w_final_df.ta.ema(length=21)
-                        w_final_df['w_sma_50'] = w_final_df.ta.sma(length=50)
-                        w_sma_20_raw = w_final_df['w_sma_20'].iloc[-1]
-                        w_ema_21_raw = w_final_df['w_ema_21'].iloc[-1]
-                        w_sma_50_raw = w_final_df['w_sma_50'].iloc[-1]
-                        w_sma_20_val = format_value(w_sma_20_raw, price_precision) if pd.notna(w_sma_20_raw) else None
-                        w_ema_21_val = format_value(w_ema_21_raw, price_precision) if pd.notna(w_ema_21_raw) else None
-                        w_sma_50_val = format_value(w_sma_50_raw, price_precision) if pd.notna(w_sma_50_raw) else None
+                        # Calculate each MA separately to identify which ones fail
+                        if weeks_available >= 20:
+                            w_final_df['w_sma_20'] = w_final_df.ta.sma(length=20)
+                            w_sma_20_raw = w_final_df['w_sma_20'].iloc[-1]
+                            w_sma_20_val = format_value(w_sma_20_raw, price_precision) if pd.notna(w_sma_20_raw) else None
+                        else:
+                            logger.warning(f"[{symbol}] Not enough data for 20W SMA (need 20, have {weeks_available})")
+                        
+                        if weeks_available >= 21:
+                            w_final_df['w_ema_21'] = w_final_df.ta.ema(length=21)
+                            w_ema_21_raw = w_final_df['w_ema_21'].iloc[-1]
+                            w_ema_21_val = format_value(w_ema_21_raw, price_precision) if pd.notna(w_ema_21_raw) else None
+                        else:
+                            logger.warning(f"[{symbol}] Not enough data for 21W EMA (need 21, have {weeks_available})")
+                        
+                        # For 50W SMA: use 50 weeks if available, otherwise use maximum available (min 20)
+                        if weeks_available >= 50:
+                            w_final_df['w_sma_50'] = w_final_df.ta.sma(length=50)
+                            w_sma_50_raw = w_final_df['w_sma_50'].iloc[-1]
+                            w_sma_50_val = format_value(w_sma_50_raw, price_precision) if pd.notna(w_sma_50_raw) else None
+                            logger.info(f"[{symbol}] Calculated 50W SMA")
+                        elif weeks_available >= 20:
+                            # Fallback: use maximum available weeks for long-term SMA
+                            fallback_length = weeks_available
+                            w_final_df['w_sma_50'] = w_final_df.ta.sma(length=fallback_length)
+                            w_sma_50_raw = w_final_df['w_sma_50'].iloc[-1]
+                            w_sma_50_val = format_value(w_sma_50_raw, price_precision) if pd.notna(w_sma_50_raw) else None
+                            logger.info(f"[{symbol}] Using {fallback_length}W SMA as fallback for 50W SMA (max available)")
+                        else:
+                            logger.warning(f"[{symbol}] Not enough data for any long-term SMA (need min 20, have {weeks_available})")
                     except Exception as e:
                         logger.error(f"[{symbol}] Error computing weekly moving averages: {e}")
 
