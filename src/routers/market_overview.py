@@ -216,14 +216,12 @@ class MarketOverviewItem(BaseModel):
 
 
 SYMBOL_CONFIG = [
-    {"symbol": "BTC/USDT", "exchange_id": "binance", "name": "Bitcoin", "desired_gap_usdt": 500.0},
-    {"symbol": "ETH/USDT", "exchange_id": "binance", "name": "Ethereum", "desired_gap_usdt": 40},
-    # {"symbol": "DOGE/USDT", "exchange_id": "binance", "name": "Dogecoin", "desired_gap_usdt": 0.003},
-    {"symbol": "SUI/USDT", "exchange_id": "binance", "name": "Sui", "desired_gap_usdt": 0.05},
-    {"symbol": "HBAR/USDT", "exchange_id": "binance", "name": "Hedera", "desired_gap_usdt": 0.005},
+    {"symbol": "BTC/USDT", "exchange_id": "mexc", "name": "Bitcoin", "desired_gap_usdt": 500.0},
+    {"symbol": "ETH/USDT", "exchange_id": "mexc", "name": "Ethereum", "desired_gap_usdt": 40},
+    {"symbol": "SUI/USDT", "exchange_id": "mexc", "name": "Sui", "desired_gap_usdt": 0.05},
+    {"symbol": "HBAR/USDT", "exchange_id": "mexc", "name": "Hedera", "desired_gap_usdt": 0.005},
     {"symbol": "HYPE/USDT", "exchange_id": "mexc", "name": "HypeCoin", "desired_gap_usdt": 0.5},
-    {"symbol": "BONK/USDT", "exchange_id": "binance", "name": "Bonk", "desired_gap_usdt": 0.00001},
-            # {"symbol": "POPCAT/USDT", "exchange_id": "mexc", "name": "Popcat", "desired_gap_usdt": 0.005},  # MEXC commented out
+    {"symbol": "BONK/USDT", "exchange_id": "mexc", "name": "Bonk", "desired_gap_usdt": 0.00001},
 ]
 
 router = APIRouter()
@@ -262,7 +260,12 @@ async def get_market_overview():
                 else:
                     try:
                         exchange_class = getattr(ccxt, exchange_id)
-                        exchange = exchange_class({'enableRateLimit': True})
+                        # Configure exchange with rate limiting and timeout
+                        exchange = exchange_class({
+                            'enableRateLimit': True,
+                            'rateLimit': 100,  # ms between requests
+                            'timeout': 30000,  # 30 second timeout
+                        })
                         active_exchanges[exchange_id] = exchange
                         logger.info(f"Initialized {exchange_id} for {symbol}")
                     except AttributeError:

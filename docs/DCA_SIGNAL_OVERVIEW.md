@@ -1,4 +1,4 @@
-# DCA Signal & Confidence Cheatsheet
+wh# DCA Signal & Confidence Cheatsheet
 
 This note explains how the backend builds each symbol's DCA recommendation in `src/routers/market_overview.py` (see `_analyze_dca_opportunity`). The same response powers the dashboard cards, the DCA summary, and every place you see signal, confidence, amount multiplier, and reasoning bullet points.
 
