@@ -15,6 +15,7 @@ const AssetOverview = () => {
   const [error, setError] = useState(null);
   const [currentOrders, setCurrentOrders] = useState({});
   const [bitgetAvailable, setBitgetAvailable] = useState(false);
+  const [sortConfig, setSortConfig] = useState({}); // Track sort state per asset: { assetSymbol: { column: 'date'|'price', direction: 'desc'|'asc' } }
 
   // Check if Bitget API is available
   const checkBitgetAvailabilityLocal = async () => {
@@ -218,8 +219,24 @@ const AssetOverview = () => {
    };
 
    useEffect(() => {
-     fetchAssetOverview();
-   }, []);
+    fetchAssetOverview();
+  }, []);
+
+  // Initialize default sort for each asset to Date DESC (most recent first)
+  // This ensures the arrow shows ↓ on load and first click toggles to ASC
+  useEffect(() => {
+    if (assetData?.assets && Object.keys(sortConfig).length === 0) {
+      const initialSort = {};
+      assetData.assets.forEach(a => {
+        if (a?.symbol) {
+          initialSort[a.symbol] = { column: 'date', direction: 'desc' };
+        }
+      });
+      if (Object.keys(initialSort).length > 0) {
+        setSortConfig(initialSort);
+      }
+    }
+  }, [assetData]);
 
   const formatDate = (dateString) => {
     if (!dateString || dateString === '') return 'N/A';
@@ -336,6 +353,66 @@ const AssetOverview = () => {
   const formatValue = (value) => {
     if (value === null || value === undefined || isNaN(value)) return '0.00';
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Sorting function for history orders
+  const handleSort = (assetSymbol, column) => {
+    setSortConfig(prevConfig => {
+      const currentSort = prevConfig[assetSymbol];
+      let newDirection;
+      
+      if (currentSort && currentSort.column === column) {
+        // Toggle between desc and asc
+        newDirection = currentSort.direction === 'desc' ? 'asc' : 'desc';
+      } else {
+        // Default direction on first click: DESC for date, ASC for price
+        newDirection = column === 'date' ? 'desc' : 'asc';
+      }
+      
+      return {
+        ...prevConfig,
+        [assetSymbol]: { column, direction: newDirection }
+      };
+    });
+  };
+
+  // Get sorted orders for an asset
+  const getSortedOrders = (orders, assetSymbol) => {
+    if (!orders || orders.length === 0) return [];
+    
+    const sortedOrders = [...orders];
+    const sort = sortConfig[assetSymbol];
+    
+    if (!sort) return sortedOrders; // No sorting applied
+    
+    sortedOrders.sort((a, b) => {
+      let aValue, bValue;
+      
+      if (sort.column === 'date') {
+        aValue = new Date(a.date || 0).getTime();
+        bValue = new Date(b.date || 0).getTime();
+      } else if (sort.column === 'price') {
+        aValue = a.price || 0;
+        bValue = b.price || 0;
+      }
+      
+      if (sort.direction === 'desc') {
+        return bValue - aValue;
+      } else {
+        return aValue - bValue;
+      }
+    });
+    
+    return sortedOrders;
+  };
+
+  // Get sort icon for column header
+  const getSortIcon = (assetSymbol, column) => {
+    const sort = sortConfig[assetSymbol];
+    if (!sort || sort.column !== column) {
+      return ' ↕'; // Neutral icon when not sorted
+    }
+    return sort.direction === 'desc' ? ' ↓' : ' ↑';
   };
 
   const formatOrderStatus = (status) => {
@@ -756,23 +833,31 @@ const AssetOverview = () => {
                    <div className="w-full">
                      <table className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
                        <thead className="bg-gray-50 dark:bg-gray-700">
-                         <tr>
-                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                             Date
-                           </th>
-                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                             Price
-                           </th>
-                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                             Qty
-                           </th>
-                           <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                             Value
-                           </th>
-                         </tr>
-                       </thead>
+                        <tr>
+                          <th 
+                            className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                            onClick={() => handleSort(asset.symbol, 'date')}
+                            title="Click to sort by date"
+                          >
+                            Date{getSortIcon(asset.symbol, 'date')}
+                          </th>
+                          <th 
+                            className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 select-none"
+                            onClick={() => handleSort(asset.symbol, 'price')}
+                            title="Click to sort by price"
+                          >
+                            Price{getSortIcon(asset.symbol, 'price')}
+                          </th>
+                          <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Qty
+                          </th>
+                          <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Value
+                          </th>
+                        </tr>
+                      </thead>
                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                         {(asset.relevant_orders || []).map((order, orderIndex) => (
+                        {getSortedOrders(asset.relevant_orders || [], asset.symbol).map((order, orderIndex) => (
                            <tr key={orderIndex} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                              <td className="px-2 py-1 text-xs text-gray-900 dark:text-white">
                                {formatDate(order.date || '')}
